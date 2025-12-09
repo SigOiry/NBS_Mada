@@ -10,10 +10,18 @@ editor_options:
 ---
 # Bathymetry in June 2025
 
-## Map of the Bathymetry
+Sentinel-2 images where downloaded from the [Copernicus DataSpace portal](https://browser.dataspace.copernicus.eu/). The images were acquired at Level-1C and atmospherically corrected using [ACOLITE](https://github.com/acolite/acolite), an atmospheric correction processor specifically adapted for aquatic applications and water-leaving reflectance retrieval [(Vanhellemont & Ruddick, 2016)](https://odnature.naturalsciences.be/downloads/publications/vanhellemontruddick_esa_lps2016_coastalapplications_final_header.pdf). The resulting subsurface remote-sensing reflectance was then used as input for bathymetric retrieval. Bathymetry was estimated using the SAMBUCA (Semi-Analytical Model for Bathymetry, Un-mixing and Concentration Assessment) inversion approach, which relies on a physics-based radiative transfer model linking subsurface reflectance to water depth through the attenuation of light in the water column and the contribution of bottom reflectance. In this framework, water depth is retrieved by minimizing the difference between modelled and measured subsurface reflectance spectra, while constraining the solution using known optical properties of the water and bottom substrates.
+
+Since the present work focuses exclusively on bathymetry, only the depth parameter was retained from the SAMBUCA inversion, and no analysis of water-column constituents or benthic composition was performed. To ensure the reliability of the retrieved depths, only pixels corresponding to optically shallow waters, where the bottom signal contributes significantly to the surface reflectance, were retained using the substratum detectability index (SDI > 5). 
+For each image, the depth retrieved by sambuca was then corrected from the water height at the moment of acquisition of the Sentinel-2 image. Water Height data was obtained from the [Marées Peche website](https://mareespeche.com/mg/madagascar/ambodifototra). The closest tidal reference station is Ambodifototra, located approximately 8 km from the Nosy Boahara Seaweed (NBS) facilities. All bathymetric depths were referenced to the Lowest Astronomical Tide (LAT), which represents the lowest theoretical sea level expected under average meteorological conditions and astronomical forcing only. Consequently, areas exhibiting positive elevation values correspond to intertidal zones that emerge during the strongest low tides, while negative values represent the water depth during lowest astronomical tides.
+The bathymetry retrieved with sambuca is a Digital Surface Model (DSM), and not a Digital Elevation Model (DEM), meaning that pixel value represent height of canopy of the vegetation and not height of the ground [(More infos)](https://sigoiry.github.io/PhD/Chapter1/intro.html#fig-DSMDTM)
+
+
+
+## Bathymetry in 2025
 
 ```{r leafletmapofBathy}
-#| fig-cap: Map of the Bathymetry of the gulf od Sainte Marie
+#| fig-cap: Map of the Bathymetry of the lagoon of Sainte Marie island. The bathymetry as been estimated from a Sentinel-2 image of the 
 #| label: fig-Map_Bathy
 #| echo: false
 #| error: false
@@ -322,4 +330,3 @@ g
 # Bathymetry time serie
 
 Estimating the temporal variability of bathymetry can provide valuable insights into coastal and intertidal dynamics. Throughout this study, we assume that areas exhibiting the greatest bathymetric variability over time correspond to zones of strong hydrodynamic forcing, driven by tides, waves, and currents. Conversely, areas showing weak or negligible bathymetric change through time are interpreted as being subject to low hydrodynamic energy.
-

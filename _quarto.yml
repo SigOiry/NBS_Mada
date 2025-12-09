@@ -14,7 +14,7 @@ website:
       - href: Biomass_area_relationships.qmd
         text: Biomass-Area Relationships
       - href: Bathymetry_Dec2025.qmd
-        text: Bathymetry of the Lagoon in December 2025
+        text: Bathymetry of the Lagoon
 format:
   html:
     theme:

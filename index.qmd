@@ -14,8 +14,10 @@ Visit the Github repository
 </button>
 :::
 
+This notebook compiles all the analyses derived from the field trip conducted by the Nantes Université teams at the Nosy Boraha Seaweed farming facilities on Sainte Marie Island, Madagascar.
+
 ```{r leafletmapofBathy}
-#| fig-cap: Map of the Bathymetry of the gulf od Sainte Marie
+#| fig-cap: Cadastre of NSB modules of Decembre 2025.
 #| label: fig-Map_Bathy
 #| echo: false
 #| error: false
@@ -124,9 +126,7 @@ m
 
 ```
 
-
 ```{r update gitignore}
-#| cache: true
 #| echo: false
 #| warning: false
 #| eval: true
@@ -166,3 +166,4 @@ if (length(large_files) > 0) {
   message("No files larger than 100 MB found.")
 }
 ```
+
