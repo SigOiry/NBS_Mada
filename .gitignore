@@ -1,0 +1,11 @@
+.Rproj.user
+.Rhistory
+.RData
+.Ruserdata
+Data/Biomass_estimations/MadakapPy_estimations/Run_Day1_AreaEstimation/Pixel_RF_Day1_AreaEstimation.dbf
+Data/Biomass_estimations/MadakapPy_estimations/Run_Day1_AreaEstimation/Pixel_RF_Day1_AreaEstimation.shp
+Data/Biomass_estimations/MadakapPy_estimations/Run_Day1_AreaEstimation/Pixel_RF_Day1_AreaEstimation_map.html
+Data/Biomass_estimations/MadakapPy_estimations/Run_Day2_AreaEstimation/Pixel_RF_Day2_AreaEstimation.dbf
+Data/Biomass_estimations/MadakapPy_estimations/Run_Day2_AreaEstimation/Pixel_RF_Day2_AreaEstimation_map.html
+
+/.quarto/

@@ -1,0 +1,7 @@
+---
+title: "Bathymetry_time_series"
+author: "Simon"
+---
+
+Estimating the temporal variability of bathymetry can provide valuable insights into coastal and intertidal dynamics. Throughout this study, we assume that areas exhibiting the greatest bathymetric variability over time correspond to zones of strong hydrodynamic forcing, driven by tides, waves, and currents. Conversely, areas showing weak or negligible bathymetric change through time are interpreted as being subject to low hydrodynamic energy.
+

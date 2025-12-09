@@ -1,0 +1,27 @@
+project:
+  type: website
+  output-dir: "docs"
+  render:
+    - index.qmd
+    - Bathymetry_Dec2025.qmd
+    - Biomass_area_relationships.qmd
+website:
+  title: "Analysis for NBS, Madagascar"
+  navbar:
+    left:
+      - href: index.qmd
+        text: Home
+      - href: Biomass_area_relationships.qmd
+        text: Biomass-Area Relationships
+      - href: Bathymetry_Dec2025.qmd
+        text: Bathymetry of the Lagoon in December 2025
+format:
+  html:
+    theme:
+      - sandstone
+    css: styles.css
+    toc: true
+
+editor: source
+
+

@@ -1,0 +1,229 @@
+---
+title: "Biomass_vs_Area"
+author: "Simon Oiry"
+format: html
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r library}
+#| echo: false
+#| error: false
+#| message: false
+#| eval: true
+#| warning: false
+
+
+library(tidyverse)
+library(terra)
+library(sf)
+library(readxl)
+library(Utilities.Package)
+```
+
+```{r open xlsx}
+#| echo: false
+#| error: false
+#| message: false
+#| eval: true
+#| warning: false
+
+df <- read_xlsx("Data/Biomass_estimations/Harvested_measurment/Récolte_01_to_05_dec2025 - NBS.xlsx")%>%
+  mutate(
+    Farm_chr = str_pad(as.character(`N°Ferme`), 
+                          width = 3, 
+                          side = "left", 
+                          pad = "0"),
+    plot_id = paste0(Farm_chr,"_",`N°Module`),
+    Remarques = case_when(is.na(Remarques) ~ "M", 
+                          T ~ Remarques)
+  ) %>% 
+  dplyr::select(plot_id, Biomass = `Poids récolté`, Remarques)
+
+```
+
+
+```{r shp opening}
+#| echo: false
+#| error: false
+#| message: false
+#| eval: true
+#| warning: false
+
+shp_list <- c("Data/Biomass_estimations/MadakapPy_estimations/Run_Day1_AreaEstimation/Pixel_RF_Day1_AreaEstimation.shp","Data/Biomass_estimations/MadakapPy_estimations/Run_Day2_AreaEstimation/Pixel_RF_Day2_AreaEstimation.shp")
+
+
+
+for(i in shp_list){
+  
+  shp_i <- read_sf(i, quiet = T)
+
+  shp_cleaned <- shp_i %>% 
+    dplyr::filter(rf_class %in% c("KappaV","KappaM"))
+  
+  if(i == shp_list[1]){
+    
+    shp_cleaned <- shp_cleaned %>% 
+      dplyr::filter(plot_id %in% c("144_6","130_5","124_1","123_1","119_6","120_6","113_1"))
+    
+    shp <- shp_cleaned
+  }else{
+    shp <- rbind(shp, shp_cleaned)
+  }
+}
+
+shp <- shp %>% 
+  dplyr::select(plot_id,rf_class)
+
+shp_sum <- shp %>%
+  mutate(
+    area_m2 = as.numeric(st_area(geometry))) %>%
+  st_drop_geometry() %>%
+  group_by(plot_id, rf_class) %>%
+  summarise(
+    area_m2 = sum(area_m2),                  # total area per plot_id × cer_class
+    .groups = "drop") %>%
+  group_by(plot_id) %>%
+  summarise(
+    total_area_m2 = sum(area_m2),
+    dom_rf_class  = rf_class[which.max(area_m2)],  # class with max area
+    .groups = "drop") %>% 
+  mutate(Dom_Class = gsub("Kappa","",dom_rf_class)) %>% 
+  dplyr::select(-dom_rf_class)
+
+```
+
+```{r merging data}
+#| echo: false
+#| error: false
+#| message: false
+#| eval: true
+#| warning: false
+#| fig-cap: Relationship between the area and the Biomass
+#| label: fig-Map_RS
+
+library(tidyverse)
+library(ggiraph)
+library(broom)
+
+# ---- Data prep ----
+df_all <- df %>% 
+  left_join(shp_sum, by = "plot_id") %>% 
+  dplyr::filter(!is.na(Dom_Class))
+
+# ---- Fit a simple linear model (Biomass ~ total_area_m2) ----
+fit_lm <- lm(Biomass ~ total_area_m2, data = df_all)
+
+# Predictions for the smooth line + 95% CI
+pred_grid <- tibble(
+  total_area_m2 = seq(
+    min(df_all$total_area_m2, na.rm = TRUE),
+    max(df_all$total_area_m2, na.rm = TRUE),
+    length.out = 200
+  )
+)
+
+pred_df <- cbind(
+  pred_grid,
+  as.data.frame(
+    predict(fit_lm, newdata = pred_grid, interval = "confidence")
+  )
+) %>% 
+  rename(
+    Biomass_fit = fit,
+    Biomass_lwr = lwr,
+    Biomass_upr = upr
+  )
+
+# Some stats for the subtitle / tooltip
+fit_summary <- summary(fit_lm)
+r2_val      <- signif(fit_summary$r.squared, 2)
+intercept   <- signif(coef(fit_lm)[1], 3)
+slope       <- signif(coef(fit_lm)[2], 3)
+
+eq_label <- paste0(
+  "Biomass = ", intercept, " + ", slope, " × Area\n",
+  "R² = ", r2_val
+)
+
+# ---- Interactive plot ----
+p <- ggplot() +
+  # 95% CI ribbon
+  geom_ribbon_interactive(
+    data = pred_df,
+    aes(
+      x = total_area_m2,
+      ymin = Biomass_lwr,
+      ymax = Biomass_upr,
+      tooltip = "95% confidence interval"
+    ),
+    alpha = 0.12
+  ) +
+  # Fitted line
+  geom_line_interactive(
+    data = pred_df,
+    aes(
+      x = total_area_m2,
+      y = Biomass_fit,
+      tooltip = eq_label
+    ),
+    linewidth = 1.1
+  ) +
+  # Points
+  geom_point_interactive(
+    data = df_all,
+    aes(
+      x = total_area_m2,
+      y = Biomass,
+      color = Remarques,
+      tooltip = paste0(
+        "Plot: ", plot_id, "\n",
+        "Biomass: ", round(Biomass, 1), "\n",
+        "Area: ", round(total_area_m2, 1), " m²\n",
+        "Remark: ", Remarques
+      ),
+      data_id = plot_id  # for hover/selection
+    ),
+    size = 4,
+    alpha = 0.9
+  )+
+  scale_color_manual(
+    values = c(
+      "V" = "darkgreen",  # dark green
+      "M" = "brown"   # brown
+    ),
+    labels = c("Marron","Vert")
+  ) +
+  labs(
+    title    = "Relationship between plot area and biomass",
+    subtitle = eq_label,
+    x        = expression(paste("Total area (m"^2, ")")),
+    y        = "Biomass",
+    color    = "Remarks"
+  ) +
+  # Keep your custom theme if you like it
+  theme_Bede() +
+  theme(
+    plot.title      = element_text(face = "bold", size = 16),
+    plot.subtitle   = element_text(size = 11),
+    legend.position = "bottom"
+  )
+
+g <- girafe(
+  ggobj = p,
+  options = list(
+    opts_hover(css = "stroke-width:3;"),
+    opts_selection(type = "none"),
+    opts_toolbar(saveaspng = TRUE),
+    opts_zoom(max = 4)
+  )
+)
+
+g
+
+
+
+
+```
+
+

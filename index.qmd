@@ -1,0 +1,168 @@
+---
+title: "Home"
+author: "Simon Oiry"
+format: html
+editor_options: 
+  chunk_output_type: console
+---
+
+
+::: {style="text-align: center; margin-top: 20px;"}
+<button onclick="window.open(&#39;https://github.com/SigOiry/NBS_Mada&#39;, &#39;_blank&#39;);" style="padding: 10px 20px; background-color: #4CAF50; color: white; border: none; border-radius: 5px; cursor: pointer;">
+
+Visit the Github repository
+</button>
+:::
+
+```{r leafletmapofBathy}
+#| fig-cap: Map of the Bathymetry of the gulf od Sainte Marie
+#| label: fig-Map_Bathy
+#| echo: false
+#| error: false
+#| message: false
+#| eval: true
+#| warning: false
+#| out-width: "95%"
+# Install once if needed:
+# install.packages(c("terra", "sf", "leaflet", "leafem", "viridisLite"))
+
+library(terra)
+library(sf)
+library(leaflet)
+library(leafem)
+library(viridisLite)
+library(tidyverse)
+
+## 1. Load your data ---------------------------------------------------------
+
+# Original bathymetry: depth in metres (0–30 m)
+bathy <- rast("Data/Bathymetry/Bathy_Lagoon_20250613_S2_Swampy.tif") %>% 
+  project("EPSG:4326")
+
+# Polygons: sf object with a column "ID"
+polys <- st_read("Data/SHP/NBS_cadastre_Dec_2025.shp", quiet =T)
+
+# Make sure both are in the same CRS
+polys <- st_transform(polys, crs(bathy))
+
+
+## 2. Create a DISPLAY-ONLY raster with values "squashed" to 0–3 m ----------
+
+# This does NOT alter `bathy`. We create a new raster just for colors.
+# Values <0 -> 0; values >3 -> 3; 0–3 unchanged.
+bathy_display <- app(
+  bathy,
+  fun = function(x) {
+    x[x < 0] <- 0
+    x[x > 2] <- 2
+    x
+  }
+)
+
+# Colour palette focused on [0, 3]
+pal_bathy <- colorNumeric(
+  palette  = viridis(256),
+  domain   = c(0, 2),
+  na.color = "transparent"
+)
+
+
+## 3. Build the leaflet map --------------------------------------------------
+
+m <- leaflet() |>
+  # addTiles(group = "Base map") %>% 
+  addProviderTiles(
+    providers$Esri.WorldImagery,
+    group = "Esri Satellite"
+  ) %>% 
+  
+  # Bathymetry layer (display only, 0–3 m scale; deeper values = color of 3 m)
+  # addRasterImage(
+  #   x       = bathy_display,
+  #   colors  = pal_bathy,
+  #   project = TRUE,
+  #   # opacity = 0.8,
+  #   group   = "Bathymetry"
+  # ) %>% 
+  
+  # addLegend(
+  #   pal       = pal_bathy,
+  #   values    = c(0, 2),
+  #   title     = "Depth (m)",
+  #   position  = "bottomright",
+  #   labFormat = labelFormat(suffix = " m")
+  # ) %>% 
+  
+  # Polygon layer with ID on hover
+  addPolygons(
+    data    = polys,
+    group   = "Polygons",
+    color   = "black",
+    weight  = 1,
+    fill    = "red",
+    opacity  = 0.5,
+    label   = ~as.character(ID),
+    highlightOptions = highlightOptions(
+      weight       = 3,
+      color        = "red",
+      bringToFront = TRUE
+    ),
+    labelOptions = labelOptions(
+      direction = "auto",
+      style     = list("font-weight" = "bold")
+    )
+  ) %>% 
+  
+  # Allow user to toggle both layers
+  addLayersControl(
+    baseGroups    = c("Esri Satellite"),
+    overlayGroups = c("Polygons"),
+    options       = layersControlOptions(collapsed = FALSE)
+  )
+
+m
+
+```
+
+
+```{r update gitignore}
+#| cache: true
+#| echo: false
+#| warning: false
+#| eval: true
+
+library(fs)
+
+# Define the size threshold in bytes (100 MB)
+size_threshold <- 100 * 1024 * 1024
+
+# Get a list of all files in the repository
+files <- dir_ls(recurse = TRUE, type = "file")
+
+# Filter files larger than the size threshold
+large_files <- files[file_info(files)$size > size_threshold]
+
+# Check if there are large files
+if (length(large_files) > 0) {
+  # Read the existing .gitignore file if it exists
+  gitignore_path <- ".gitignore"
+  gitignore_content <- if (file_exists(gitignore_path)) {
+    readLines(gitignore_path)
+  } else {
+    character(0)
+  }
+  
+  # Identify files not already in .gitignore
+  files_to_add <- large_files[!large_files %in% gitignore_content]
+  
+  # Append new large files to .gitignore
+  if (length(files_to_add) > 0) {
+    writeLines(c(gitignore_content, files_to_add), gitignore_path)
+    message(length(files_to_add), " file(s) added to .gitignore.")
+  } else {
+    message("No new files to add to .gitignore.")
+  }
+} else {
+  message("No files larger than 100 MB found.")
+}
+```
