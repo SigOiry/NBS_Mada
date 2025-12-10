@@ -9,16 +9,225 @@ editor_options:
   chunk_output_type: console
 ---
 
-# Bathymetry in June 2025
+# Method of the bathymetry estimations
 
 Sentinel-2 images where downloaded from the [Copernicus DataSpace portal](https://browser.dataspace.copernicus.eu/). The images were acquired at Level-1C and atmospherically corrected using [ACOLITE](https://github.com/acolite/acolite), an atmospheric correction processor specifically adapted for aquatic applications and water-leaving reflectance retrieval [(Vanhellemont & Ruddick, 2016)](https://odnature.naturalsciences.be/downloads/publications/vanhellemontruddick_esa_lps2016_coastalapplications_final_header.pdf). The resulting subsurface remote-sensing reflectance was then used as input for bathymetric retrieval. Bathymetry was estimated using the SAMBUCA (Semi-Analytical Model for Bathymetry, Un-mixing and Concentration Assessment) inversion approach, which relies on a physics-based radiative transfer model linking subsurface reflectance to water depth through the attenuation of light in the water column and the contribution of bottom reflectance. In this framework, water depth is retrieved by minimizing the difference between modeled and measured subsurface reflectance spectra, while constraining the solution using known optical properties of the water and bottom substrates.
 
-Since the present work focuses exclusively on bathymetry, only the depth parameter was retained from the SAMBUCA inversion, and no analysis of water-column constituents or benthic composition was performed. To ensure the reliability of the retrieved depths, only pixels corresponding to optically shallow waters, where the bottom signal contributes significantly to the surface reflectance, were retained using the substratum detectability index (SDI \> 5). For each image, the depth retrieved by sambuca was then corrected from the water height at the moment of acquisition of the Sentinel-2 image. Water Height data was obtained from the [Marées Peche website](https://mareespeche.com/mg/madagascar/ambodifototra). The closest tidal reference station is Ambodifototra, located approximately 8 km from the Nosy Boahara Seaweed (NBS) facilities. All bathymetric depths were referenced to the Lowest Astronomical Tide (LAT), which represents the lowest theoretical sea level expected under average meteorological conditions and astronomical forcing only. Consequently, areas exhibiting positive elevation values correspond to intertidal zones that emerge during the strongest low tides, while negative values represent the water depth during lowest astronomical tides. The bathymetry retrieved with sambuca is a Digital Surface Model (DSM), and not a Digital Elevation Model (DEM), meaning that pixel value represent height of canopy of the vegetation and not height of the ground [(More infos)](https://sigoiry.github.io/PhD/Chapter1/intro.html#fig-DSMDTM)
+Since the present work focuses exclusively on water depth, only the depth parameter was retained from the SAMBUCA inversion, and no analysis of water-column constituents or benthic composition was performed. To ensure the reliability of the retrieved depths, only pixels corresponding to optically shallow waters, where the bottom signal contributes significantly to the surface reflectance, were retained using the substratum detectability index (SDI \> 5). 
+<!-- For each image, the depth retrieved by sambuca was then corrected from the water height at the moment of acquisition of the Sentinel-2 image. Water Height data was obtained from the [Marées Peche website](https://mareespeche.com/mg/madagascar/ambodifototra). The closest tidal reference station is Ambodifototra, located approximately 8 km from the Nosy Boahara Seaweed (NBS) facilities. All bathymetric depths were referenced to the Lowest Astronomical Tide (LAT), which represents the lowest theoretical sea level expected under average meteorological conditions and astronomical forcing only. Consequently, areas exhibiting positive elevation values correspond to intertidal zones that emerge during the strongest low tides, while negative values represent the water depth during lowest astronomical tides. The bathymetry retrieved with sambuca is a Digital Surface Model (DSM), and not a Digital Elevation Model (DEM), meaning that pixel value represent height of canopy of the vegetation and not height of the ground [(More infos)](https://sigoiry.github.io/PhD/Chapter1/intro.html#fig-DSMDTM).  -->
 
-## Bathymetry in 2025
+A total of 29 images Sentinel-2 are exploitable between 2016 and 2025 (@tbl-S2_imgs) . An image is considered usable when it is entirely cloud-free over the whole NBS farming area and when no significant sun-glint is present. Sun-glint introduces strong specular reflection at the water surface, which contaminates the water-leaving radiance and severely limits the retrieval of bottom reflectance at satellite level. Consequently, only images acquired under low-wind conditions and favorable sun–sensor geometry were retained to ensure reliable benthic information.
+
+```{r S2 images list}
+#| tbl-cap: List of cloud- and sun-glint-free Sentinel-2 images acquired over the NBS facilities. Acquisition times are expressed in Coordinated Universal Time (UTC), and water heights at the time of image acquisition are given relative to the astronomical tide reference (astronomical height). All images were downloaded at the Level 1 of correction. 
+#| label: tbl-S2_imgs
+#| echo: false
+#| error: false
+#| message: false
+#| eval: true
+#| warning: false
+
+ 
+library(stringr)
+library(dplyr)
+library(flextable)
+library(fs)
+library(tidyverse)
+
+# --- Path to the folder containing all .SAFE directories ---
+safe_dir <- "Data/S2/RAW"
+
+# --- List all .SAFE folders ---
+safe_folders <- dir_ls(
+  path = safe_dir,
+  regexp = "\\.SAFE$",
+  type = "directory"
+) %>% 
+  basename()
+
+# --- Extract date and time from folder names ---
+df_images <- tibble(
+  image_name = safe_folders,
+  datetime_str = str_extract(image_name, "\\d{8}T\\d{6}")
+) %>%
+  mutate(
+    date = as.Date(str_sub(datetime_str, 1, 8), format = "%Y%m%d"),
+    time_utc = str_sub(datetime_str, 10, 15),
+    time_utc = paste0(
+      str_sub(time_utc, 1, 2), ":", 
+      str_sub(time_utc, 3, 4), ":", 
+      str_sub(time_utc, 5, 6)
+    )
+  ) %>%
+  select(
+    # `Image name` = image_name,
+    `Acquisition date` = date,
+    `Acquisition time (UTC)` = time_utc
+  ) %>%
+  arrange(`Acquisition date`, `Acquisition time (UTC)`)
+
+df_export <- df_images %>% 
+  dplyr::select(date = `Acquisition date`,
+                time = `Acquisition time (UTC)`)
+
+# write.csv(df_export, "Data/S2/tides.csv")
+
+df_tide <- read.delim("Data/S2/tides.csv", sep = ";") %>% 
+  mutate(Water.Level = Water.Level + 1) %>%  ### 1 is added to transform mean sea level to astronomical height
+  dplyr::rename(`Water Height (m)` = "Water.Level") %>% 
+  dplyr::select(date,`Water Height (m)`) %>% 
+  mutate(date = as.Date(date, format = "%d/%m/%Y"))
+
+
+
+depth_img_end <- list.files("Data/Bathymetry/depth_norm/", pattern = ".tif",full.names = T) %>% 
+  as_tibble() %>% 
+  rename(path = "value") %>% 
+  mutate(date = substr(path, 43, 52) %>% 
+           as.Date(format = "%Y_%m_%d")) %>% 
+  pull(date)
+
+df_images <- df_images %>% 
+  left_join(df_tide, by = c("Acquisition date" = "date")) %>% 
+  dplyr::filter(`Acquisition date` %in% depth_img_end)
+
+n <- nrow(df_images)
+half <- ceiling(n / 2)
+
+df_left  <- df_images[1:half, ]
+df_right <- df_images[(half + 1):n, ]
+
+# Rename right columns to avoid duplicate names
+colnames(df_right) <- paste0(colnames(df_right), " ")
+
+# Bind side by side
+df_2col <- bind_cols(df_left, df_right)
+
+# Index of the last column of the left block
+sep_col <- ncol(df_left)
+
+ft <- flextable(df_2col) %>%
+  autofit() %>%
+  flextable::align(align = "center", part = "all") %>%
+  bold(part = "header") %>%
+  vline(
+    j = sep_col,                             # draw line at the separation column
+    border = officer::fp_border(color = "black", width = 1),
+    part = "all"
+  )
+
+ft
+```
+
+## Average depth of the lagoon
+
+```{r standardised bathy}
+#| echo: false
+#| error: false
+#| message: false
+#| eval: false
+#| warning: false
+
+
+library(terra)
+
+files <- list.files("Data/S2/Sambuca/swampy_run_20251210_144717/", pattern = "L2W.tif", full.names = T) %>% 
+  as_tibble() %>% 
+  rename(path = "value") %>% 
+  mutate(date = substr(path, 59, 68)) %>% 
+  dplyr::filter(!(date %in% c("2021_03_01","2025_09_18","2017_09_13","2023_03_16","2025_09_01","2016_04_06","2016_09_23","2018_03_27","2018_09_13"))) %>% 
+  pull(path)
+
+# Read all rasters into a list
+ras_list <- lapply(files, rast)
+
+# 2. Extract band 4 (depth) from each raster ----------------------------
+
+depth_list <- lapply(ras_list, function(r) r[[4]])  # band 4
+depth_stack <- rast(depth_list)                     # stack of all depth layers
+
+
+# 3. Build a common valid mask (cells valid in ALL images) --------------
+
+valid_mask <- app(depth_stack, fun = function(...) {
+  vals <- c(...)
+  if (all(is.finite(vals))) 1 else NA
+})
+
+# 4. Compute mean depth per image (over common mask) --------------------
+
+means <- sapply(1:nlyr(depth_stack), function(i) {
+  global(mask(depth_stack[[i]], valid_mask),
+         fun = "mean", na.rm = TRUE)[1, 1]
+})
+
+# Global mean over all images
+mean_all <- mean(means)
+
+# Offset needed for each image to match the global mean
+offsets <- mean_all - means
+
+# 5. Apply offset to band 4 only, keep other bands as they are ----------
+
+norm_list <- mapply(
+  FUN = function(r, off) {
+    # Corrected band 4
+    r4_corr <- r[[4]] + off
+    
+    # Replace band 4 in the original multiband raster
+    r[[4]] <- r4_corr
+    r
+  },
+  r   = ras_list,
+  off = offsets,
+  SIMPLIFY = FALSE
+)
+
+# 6. Write corrected rasters to disk ------------------------------------
+
+out_files <- sub("\\.tif$", "_norm.tif", files) %>% 
+  gsub("S2/Sambuca/swampy_run_20251210_144717","Bathymetry/depth_norm",.)
+
+mapply(
+  FUN = function(r, f) {
+    writeRaster(r[[4]], f, overwrite = TRUE)
+  },
+  r = norm_list,
+  f = out_files
+)
+
+```
+
+```{r metrics of bathy}
+#| echo: false
+#| error: false
+#| message: false
+#| eval: false
+#| warning: false
+
+norm_bathy <- rast(list.files("Data/Bathymetry/depth_norm/", pattern = ".tif", full.names = T))
+
+sd_depth <- app(
+  norm_bathy,
+  fun   = sd,
+  na.rm = TRUE   # ignore NAs if some dates are missing at some pixels
+)
+
+avg_depth <- app(
+  norm_bathy,
+  fun   = mean,
+  na.rm = TRUE   # ignore NAs if some dates are missing at some pixels
+)
+
+# plot(sd_depth)
+writeRaster(sd_depth, "Data/Bathymetry/depth_sd_29dates.tif", overwrite = TRUE)
+writeRaster(avg_depth, "Data/Bathymetry/depth_avg_29dates.tif", overwrite = TRUE)
+
+
+```
 
 ```{r leafletmapofBathy}
-#| fig-cap: Map of the Bathymetry of the lagoon of Sainte Marie island. The bathymetry as been estimated from a Sentinel-2 image of the 
+#| fig-cap: Map of the average depth of the lagoon of Sainte Marie island.
 #| label: fig-Map_Bathy
 #| echo: false
 #| error: false
@@ -26,8 +235,6 @@ Since the present work focuses exclusively on bathymetry, only the depth paramet
 #| eval: true
 #| warning: false
 #| out-width: "95%"
-# Install once if needed:
-# install.packages(c("terra", "sf", "leaflet", "leafem", "viridisLite"))
 
 library(terra)
 library(sf)
@@ -38,11 +245,9 @@ library(tidyverse)
 
 ## 1. Load your data ---------------------------------------------------------
 
-# Original bathymetry: depth in metres (0–30 m)
-bathy <- rast("Data/Bathymetry/Bathy_Lagoon_20250613_S2_Swampy.tif") %>% 
+bathy <- rast("Data/Bathymetry/depth_avg_29dates.tif") %>% 
   project("EPSG:4326")
 
-# Polygons: sf object with a column "ID"
 polys <- st_read("Data/SHP/NBS_cadastre_Dec_2025.shp", quiet =T)
 
 # Make sure both are in the same CRS
@@ -132,7 +337,7 @@ m <-  m %>%
   # wire up click‐popup: show value with 2 decimals
   addImageQuery(
     # map    = .,
-    x = bathy$Bathy_Lagoon_20250613_S2_Swampy,
+    x = bathy$mean,
     project = TRUE,
     layerId= "Bathymetry",
     type   = "mousemove",
@@ -141,6 +346,145 @@ m <-  m %>%
   ) 
 
 m
+
+```
+
+## Variability of the depth along time 
+
+Quantifying the temporal variability of bathymetry provides a proxy for characterising hydrodynamic processes in coastal and intertidal environments. In this study, we assume that areas exhibiting high depth variability through time reflect zones subjected to strong hydrodynamic forcing associated with tidal currents, wave action, and residual circulation. Conversely, sectors showing low or negligible temporal depth variability are interpreted as being exposed to weak hydrodynamic energy and limited sediment reworking.
+
+```{r leafletmapofBathysd}
+#| fig-cap: Map of the standard deviation of depth of the lagoon of Sainte Marie island. 
+#| label: fig-Map_Bathy_sd
+#| echo: false
+#| error: false
+#| message: false
+#| eval: true
+#| warning: false
+#| out-width: "95%"
+
+library(terra)
+library(sf)
+library(leaflet)
+library(leafem)
+library(viridisLite)
+library(tidyverse)
+
+## 1. Load your data ---------------------------------------------------------
+
+bathy_sd <- rast("Data/Bathymetry/depth_sd_29dates.tif") %>% 
+  project("EPSG:4326")
+
+polys <- st_read("Data/SHP/NBS_cadastre_Dec_2025.shp", quiet =T)
+
+# Make sure both are in the same CRS
+polys <- st_transform(polys, crs(bathy_sd))
+
+
+## 2. Create a DISPLAY-ONLY raster with values "squashed" to 0–3 m ----------
+
+# This does NOT alter `bathy`. We create a new raster just for colors.
+# Values <0 -> 0; values >3 -> 3; 0–3 unchanged.
+bathy_display_sd <- app(
+  bathy_sd,
+  fun = function(x) {
+    x[x < 0] <- 0
+    x[x > 1] <- 1
+    x
+  }
+)
+
+# Colour palette focused on [0, 3]
+pal_bathy_sd <- colorNumeric(
+  palette = colorRampPalette(c(
+    "#3B0F70",  # purple (very low)
+    "#2C7BB6",  # blue
+    "#00A6CA",  # cyan
+    "#00CCBC",  # greenish-cyan
+    "#90EB9D",  # light green
+    "#FFFF8C",  # yellow
+    "#F9D057",  # orange-yellow
+    "#F29E2E",  # orange
+    "#E76818",  # red-orange
+    "#D7191C"   # dark red (high)
+  ))(256),
+  domain   = c(0, 1),
+  na.color = "transparent"
+)
+
+
+
+## 3. Build the leaflet map --------------------------------------------------
+
+m_sd <- leaflet() |>
+  # addTiles(group = "Base map") %>% 
+  addProviderTiles(
+    providers$Esri.WorldImagery,
+    group = "Esri Satellite"
+  ) %>% 
+  
+  # Bathymetry layer (display only, 0–3 m scale; deeper values = color of 3 m)
+  addRasterImage(
+    x       = bathy_display_sd,
+    colors  = pal_bathy_sd,
+    project = TRUE,
+    # opacity = 0.8,
+    group   = "Standard Deviation of the Depth"
+  ) %>% 
+  
+  addLegend(
+    pal       = pal_bathy_sd,
+    values    = c(0, 1),
+    title     = "Standard Deviation of the Depth (m)",
+    position  = "bottomright",
+    labFormat = labelFormat(suffix = " m")
+  ) %>% 
+  
+  # Polygon layer with ID on hover
+  addPolygons(
+    data    = polys,
+    group   = "Polygons",
+    color   = "black",
+    weight  = 1,
+    fill    = "red",
+    opacity  = 0.5,
+    label   = ~as.character(ID),
+    highlightOptions = highlightOptions(
+      weight       = 3,
+      color        = "red",
+      bringToFront = TRUE
+    ),
+    labelOptions = labelOptions(
+      direction = "auto",
+      style     = list("font-weight" = "bold")
+    )
+  ) %>% 
+  
+  # Allow user to toggle both layers
+  addLayersControl(
+    baseGroups    = c("Esri Satellite"),
+    overlayGroups = c("Standard Deviation of the Depth", "Polygons"),
+    options       = layersControlOptions(collapsed = FALSE)
+  )
+
+
+## 4. Add real bathymetry value under cursor (0–30 m) -----------------------
+
+# IMPORTANT: here we use the ORIGINAL `bathy` (0–30 m).
+# So the query shows the true depth, even though colours are “compressed” to 0–3.
+m_sd <-  m_sd %>%
+  # wire up click‐popup: show value with 2 decimals
+  addImageQuery(
+    # map    = .,
+    x = bathy_sd$sd,
+    project = TRUE,
+    layerId= "Standard Deviation of the Depth",
+    type   = "mousemove",
+    digits = 2,
+    prefix = ""
+  ) 
+
+m_sd
 
 ```
 
@@ -324,6 +668,3 @@ g
 
 ```
 
-# Bathymetry time serie
-
-Estimating the temporal variability of bathymetry can provide valuable insights into coastal and intertidal dynamics. Throughout this study, we assume that areas exhibiting the greatest bathymetric variability over time correspond to zones of strong hydrodynamic forcing, driven by tides, waves, and currents. Conversely, areas showing weak or negligible bathymetric change through time are interpreted as being subject to low hydrodynamic energy.

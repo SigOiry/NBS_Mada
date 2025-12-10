@@ -36,30 +36,12 @@ library(viridisLite)
 library(tidyverse)
 
 ## 1. Load your data ---------------------------------------------------------
-
-# Original bathymetry: depth in metres (0–30 m)
-bathy <- rast("Data/Bathymetry/Bathy_Lagoon_20250613_S2_Swampy.tif") %>% 
-  project("EPSG:4326")
-
 # Polygons: sf object with a column "ID"
 polys <- st_read("Data/SHP/NBS_cadastre_Dec_2025.shp", quiet =T)
 
 # Make sure both are in the same CRS
-polys <- st_transform(polys, crs(bathy))
+polys <- st_transform(polys, crs("EPSG:4326"))
 
-
-## 2. Create a DISPLAY-ONLY raster with values "squashed" to 0–3 m ----------
-
-# This does NOT alter `bathy`. We create a new raster just for colors.
-# Values <0 -> 0; values >3 -> 3; 0–3 unchanged.
-bathy_display <- app(
-  bathy,
-  fun = function(x) {
-    x[x < 0] <- 0
-    x[x > 2] <- 2
-    x
-  }
-)
 
 # Colour palette focused on [0, 3]
 pal_bathy <- colorNumeric(
