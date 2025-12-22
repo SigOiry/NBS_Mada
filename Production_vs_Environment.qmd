@@ -1,0 +1,159 @@
+---
+title: "Spatial Variability of the production of algae"
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r library}
+#| echo: false
+#| error: false
+#| message: false
+#| eval: true
+#| warning: false
+
+library(terra)
+library(tidyverse)
+library(sf)
+library(readxl)
+```
+
+```{r file opening}
+#| echo: false
+#| error: false
+#| message: false
+#| eval: true
+#| warning: false
+
+prod_2025 <- read_xlsx("Data/Biomass_estimations/Harvested_measurment/NBS - Récolte 2025.xlsx") %>% 
+  mutate(FarmID = sprintf("%03d", FarmID),
+         Module_ID = paste(FarmID,ModuleNumber, sep = "_")) 
+
+cadastre <- read_sf("Data/SHP/NBS_cadastre_Dec_2025.shp") %>% 
+  dplyr::select(-c(Farm_ID,Module_ID)) %>% 
+  dplyr::rename(Module_ID = "ID") %>% 
+  left_join(prod_2025, by = "Module_ID") %>% 
+  dplyr::filter(CultureMode == "Cordes") %>% 
+  mutate(Net_Production = Harvested_Weight - 700, 
+         Growth_per_day = Net_Production/CultureDuration_days)
+
+
+
+```
+
+```{r Avg prod per day}
+#| echo: false
+#| error: false
+#| message: false
+#| eval: true
+#| warning: false
+#| fig-cap: "Daily algal production (kg day⁻¹) for each module of the NBS facilities. The left panel shows the median algal production per culture module in 2025, while the right panel displays the associated standard deviation, reflecting production variability along the year."
+#| label: fig-map_productivity
+
+library(dplyr)
+library(sf)
+library(leaflet)
+library(scico)
+library(htmltools)
+
+Summary_Growth <- cadastre %>% 
+  dplyr::select(Module_ID, Growth_per_day) %>% 
+  group_by(Module_ID) %>% 
+  dplyr::reframe(
+    med = median(Growth_per_day, na.rm = TRUE),
+    sd  = sd(Growth_per_day, na.rm = TRUE),
+    geometry = geometry[1]
+  ) %>% 
+  st_as_sf() %>% 
+  st_transform(4326)
+
+# --- 0) Make sure CRS is leaflet-friendly (WGS84 lon/lat) ---
+stopifnot(!is.na(st_crs(Summary_Growth)))
+SG <- Summary_Growth
+if (st_crs(SG)$epsg != 4326) SG <- st_transform(SG, 4326)
+
+# --- 1) Palettes ---
+pal_med <- colorNumeric(
+  palette = scico(256, palette = "batlow"),
+  domain  = SG$med,
+  na.color = "transparent"
+)
+
+pal_sd <- colorNumeric(
+  palette  = scico(256, palette = "vik"),
+  domain   = SG$sd,
+  na.color = "transparent"
+)
+
+# --- 2) Map 1 ---
+m_med <- leaflet(SG, width = "100%", height = "600px") %>%
+  # addProviderTiles(providers$CartoDB.Positron, group = "Positron") %>%
+  addProviderTiles(providers$Esri.WorldImagery, group = "ESRI Satellite") %>%
+  addPolygons(
+    fillColor   = ~pal_med(med),
+    fillOpacity = 0.8,
+    color       = "black",
+    weight      = 0.3,
+    opacity     = 1,
+    label = ~paste0("Median: ", round(med, 2), ", SD: ", round(sd, 2))
+  ) %>%
+  addLegend(pal = pal_med, values = ~med, title = "Median value", opacity = 1) %>%
+  addLayersControl(
+    baseGroups = c("ESRI Satellite"),
+    options = layersControlOptions(collapsed = TRUE)
+  )
+
+# --- 3) Map 2 ---
+m_sd <- leaflet(SG, width = "100%", height = "600px") %>%
+  # addProviderTiles(providers$CartoDB.Positron, group = "Positron") %>%
+  addProviderTiles(providers$Esri.WorldImagery, group = "ESRI Satellite") %>%
+  addPolygons(
+    fillColor   = ~pal_sd(sd),
+    fillOpacity = 0.8,
+    color       = "black",
+    weight      = 0.3,
+    opacity     = 1,
+    label = ~paste0("SD: ", round(sd, 2), ", Median: ", round(med, 2))
+  ) %>%
+  addLegend(pal = pal_sd, values = ~sd, title = "Standard deviation", opacity = 1) %>%
+  addLayersControl(
+    baseGroups = c("ESRI Satellite"),
+    options = layersControlOptions(collapsed = TRUE)
+  )
+
+synced <- leafsync::sync(m_med, m_sd)
+
+browsable(tagList(
+  tags$style(HTML("
+    /* Move legends to bottom center */
+    .leaflet-bottom.leaflet-left .leaflet-control,
+    .leaflet-bottom.leaflet-right .leaflet-control{
+      position: relative;
+      left: 50%;
+      transform: translateX(-50%);
+      float: none !important;
+      margin: 0 auto 10px auto !important;
+    }
+
+    /* Make the legend bar horizontal by rotating the leaflet legend SVG */
+    .leaflet-control .leaflet-legend svg{
+      transform: rotate(-90deg);
+      transform-origin: center;
+      display: block;
+      margin: 0 auto;
+    }
+
+    /* Optional: make legend box a bit wider and compact */
+    .leaflet-control.leaflet-legend{
+      width: 260px;
+      text-align: center;
+    }
+    .leaflet-control.leaflet-legend .legend-title{
+      margin-bottom: 6px;
+      font-weight: 600;
+    }
+  ")),
+  synced
+))
+```
+
+

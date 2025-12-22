@@ -349,154 +349,14 @@ m
 
 ```
 
-## Variability of the depth along time 
-
-Quantifying the temporal variability of bathymetry provides a proxy for characterising hydrodynamic processes in coastal and intertidal environments. In this study, we assume that areas exhibiting high depth variability through time reflect zones subjected to strong hydrodynamic forcing associated with tidal currents, wave action, and residual circulation. Conversely, sectors showing low or negligible temporal depth variability are interpreted as being exposed to weak hydrodynamic energy and limited sediment reworking.
-
-```{r leafletmapofBathysd}
-#| fig-cap: Map of the standard deviation of depth of the lagoon of Sainte Marie island. 
-#| label: fig-Map_Bathy_sd
+```{r gyraph plot avg}
 #| echo: false
 #| error: false
 #| message: false
 #| eval: true
 #| warning: false
-#| out-width: "95%"
-
-library(terra)
-library(sf)
-library(leaflet)
-library(leafem)
-library(viridisLite)
-library(tidyverse)
-
-## 1. Load your data ---------------------------------------------------------
-
-bathy_sd <- rast("Data/Bathymetry/depth_sd_29dates.tif") %>% 
-  project("EPSG:4326")
-
-polys <- st_read("Data/SHP/NBS_cadastre_Dec_2025.shp", quiet =T)
-
-# Make sure both are in the same CRS
-polys <- st_transform(polys, crs(bathy_sd))
-
-
-## 2. Create a DISPLAY-ONLY raster with values "squashed" to 0–3 m ----------
-
-# This does NOT alter `bathy`. We create a new raster just for colors.
-# Values <0 -> 0; values >3 -> 3; 0–3 unchanged.
-bathy_display_sd <- app(
-  bathy_sd,
-  fun = function(x) {
-    x[x < 0] <- 0
-    x[x > 1] <- 1
-    x
-  }
-)
-
-# Colour palette focused on [0, 3]
-pal_bathy_sd <- colorNumeric(
-  palette = colorRampPalette(c(
-    "#3B0F70",  # purple (very low)
-    "#2C7BB6",  # blue
-    "#00A6CA",  # cyan
-    "#00CCBC",  # greenish-cyan
-    "#90EB9D",  # light green
-    "#FFFF8C",  # yellow
-    "#F9D057",  # orange-yellow
-    "#F29E2E",  # orange
-    "#E76818",  # red-orange
-    "#D7191C"   # dark red (high)
-  ))(256),
-  domain   = c(0, 1),
-  na.color = "transparent"
-)
-
-
-
-## 3. Build the leaflet map --------------------------------------------------
-
-m_sd <- leaflet() |>
-  # addTiles(group = "Base map") %>% 
-  addProviderTiles(
-    providers$Esri.WorldImagery,
-    group = "Esri Satellite"
-  ) %>% 
-  
-  # Bathymetry layer (display only, 0–3 m scale; deeper values = color of 3 m)
-  addRasterImage(
-    x       = bathy_display_sd,
-    colors  = pal_bathy_sd,
-    project = TRUE,
-    # opacity = 0.8,
-    group   = "Standard Deviation of the Depth"
-  ) %>% 
-  
-  addLegend(
-    pal       = pal_bathy_sd,
-    values    = c(0, 1),
-    title     = "Standard Deviation of the Depth (m)",
-    position  = "bottomright",
-    labFormat = labelFormat(suffix = " m")
-  ) %>% 
-  
-  # Polygon layer with ID on hover
-  addPolygons(
-    data    = polys,
-    group   = "Polygons",
-    color   = "black",
-    weight  = 1,
-    fill    = "red",
-    opacity  = 0.5,
-    label   = ~as.character(ID),
-    highlightOptions = highlightOptions(
-      weight       = 3,
-      color        = "red",
-      bringToFront = TRUE
-    ),
-    labelOptions = labelOptions(
-      direction = "auto",
-      style     = list("font-weight" = "bold")
-    )
-  ) %>% 
-  
-  # Allow user to toggle both layers
-  addLayersControl(
-    baseGroups    = c("Esri Satellite"),
-    overlayGroups = c("Standard Deviation of the Depth", "Polygons"),
-    options       = layersControlOptions(collapsed = FALSE)
-  )
-
-
-## 4. Add real bathymetry value under cursor (0–30 m) -----------------------
-
-# IMPORTANT: here we use the ORIGINAL `bathy` (0–30 m).
-# So the query shows the true depth, even though colours are “compressed” to 0–3.
-m_sd <-  m_sd %>%
-  # wire up click‐popup: show value with 2 decimals
-  addImageQuery(
-    # map    = .,
-    x = bathy_sd$sd,
-    project = TRUE,
-    layerId= "Standard Deviation of the Depth",
-    type   = "mousemove",
-    digits = 2,
-    prefix = ""
-  ) 
-
-m_sd
-
-```
-
-## Bathymetry of Each Module
-
-```{r gyraph plot}
-#| echo: false
-#| error: false
-#| message: false
-#| eval: true
-#| warning: false
-
+#| fig-cap: Relationship between latitude and median depth across all modules. Each point represents the median depth within a module, with vertical whiskers indicating the standard deviation of the depth. Point colors correspond to latitude. The black line shows the fitted GAM curve, with the shaded envelope representing the 95% confidence interval, highlighting the spatial trend in depth variability along the north–south gradient.
+#| label: fig-relationship_latitude_bathymetry
 
 library(tidyverse)
 library(terra)
@@ -668,3 +528,333 @@ g
 
 ```
 
+
+## Variability of the depth along time 
+
+Quantifying the temporal variability of bathymetry provides a proxy for characterising hydrodynamic processes in coastal and intertidal environments. In this study, we assume that areas exhibiting high depth variability through time reflect zones subjected to strong hydrodynamic forcing associated with tidal currents, wave action, and residual circulation. Conversely, sectors showing low or negligible temporal depth variability are interpreted as being exposed to weak hydrodynamic energy and limited sediment reworking.
+
+```{r leafletmapofBathysd}
+#| fig-cap: Map of the standard deviation of depth of the lagoon of Sainte Marie island. 
+#| label: fig-Map_Bathy_sd
+#| echo: false
+#| error: false
+#| message: false
+#| eval: true
+#| warning: false
+#| out-width: "95%"
+
+library(terra)
+library(sf)
+library(leaflet)
+library(leafem)
+library(viridisLite)
+library(tidyverse)
+
+## 1. Load your data ---------------------------------------------------------
+
+bathy_sd <- rast("Data/Bathymetry/depth_sd_29dates.tif") %>% 
+  project("EPSG:4326")
+
+polys <- st_read("Data/SHP/NBS_cadastre_Dec_2025.shp", quiet =T)
+
+# Make sure both are in the same CRS
+polys <- st_transform(polys, crs(bathy_sd))
+
+
+## 2. Create a DISPLAY-ONLY raster with values "squashed" to 0–3 m ----------
+
+# This does NOT alter `bathy`. We create a new raster just for colors.
+# Values <0 -> 0; values >3 -> 3; 0–3 unchanged.
+bathy_display_sd <- app(
+  bathy_sd,
+  fun = function(x) {
+    x[x < 0] <- 0
+    x[x > 1] <- 1
+    x
+  }
+)
+
+# Colour palette focused on [0, 3]
+pal_bathy_sd <- colorNumeric(
+  palette = colorRampPalette(c(
+    "#3B0F70",  # purple (very low)
+    "#2C7BB6",  # blue
+    "#00A6CA",  # cyan
+    "#00CCBC",  # greenish-cyan
+    "#90EB9D",  # light green
+    "#FFFF8C",  # yellow
+    "#F9D057",  # orange-yellow
+    "#F29E2E",  # orange
+    "#E76818",  # red-orange
+    "#D7191C"   # dark red (high)
+  ))(256),
+  domain   = c(0, 1),
+  na.color = "transparent"
+)
+
+
+
+## 3. Build the leaflet map --------------------------------------------------
+
+m_sd <- leaflet() |>
+  # addTiles(group = "Base map") %>% 
+  addProviderTiles(
+    providers$Esri.WorldImagery,
+    group = "Esri Satellite"
+  ) %>% 
+  
+  # Bathymetry layer (display only, 0–3 m scale; deeper values = color of 3 m)
+  addRasterImage(
+    x       = bathy_display_sd,
+    colors  = pal_bathy_sd,
+    project = TRUE,
+    # opacity = 0.8,
+    group   = "Standard Deviation of the Depth"
+  ) %>% 
+  
+  addLegend(
+    pal       = pal_bathy_sd,
+    values    = c(0, 1),
+    title     = "Standard Deviation of the Depth (m)",
+    position  = "bottomright",
+    labFormat = labelFormat(suffix = " m")
+  ) %>% 
+  
+  # Polygon layer with ID on hover
+  addPolygons(
+    data    = polys,
+    group   = "Polygons",
+    color   = "black",
+    weight  = 1,
+    fill    = "red",
+    opacity  = 0.5,
+    label   = ~as.character(ID),
+    highlightOptions = highlightOptions(
+      weight       = 3,
+      color        = "red",
+      bringToFront = TRUE
+    ),
+    labelOptions = labelOptions(
+      direction = "auto",
+      style     = list("font-weight" = "bold")
+    )
+  ) %>% 
+  
+  # Allow user to toggle both layers
+  addLayersControl(
+    baseGroups    = c("Esri Satellite"),
+    overlayGroups = c("Standard Deviation of the Depth", "Polygons"),
+    options       = layersControlOptions(collapsed = FALSE)
+  )
+
+
+## 4. Add real bathymetry value under cursor (0–30 m) -----------------------
+
+# IMPORTANT: here we use the ORIGINAL `bathy` (0–30 m).
+# So the query shows the true depth, even though colours are “compressed” to 0–3.
+m_sd <-  m_sd %>%
+  # wire up click‐popup: show value with 2 decimals
+  addImageQuery(
+    # map    = .,
+    x = bathy_sd$sd,
+    project = TRUE,
+    layerId= "Standard Deviation of the Depth",
+    type   = "mousemove",
+    digits = 2,
+    prefix = ""
+  ) 
+
+m_sd
+
+```
+
+```{r gyraph plot sd}
+#| echo: false
+#| error: false
+#| message: false
+#| eval: true
+#| warning: false
+#| fig-cap: Relationship between latitude and the temporal variability of depth across all modules. Each point represents the mean standard deviation of depth within a module, while vertical whiskers indicate the variability of this metric (standard deviation of the SD). Point colors encode the module’s centroid latitude. The black curve depicts the GAM fit, with a shaded 95% confidence interval, illustrating the latitudinal gradient in depth variability along the north–south axis.
+#| label: fig-relationship_latitude_bathymetry_sd
+
+library(dplyr)
+library(sf)
+library(terra)
+library(tibble)
+library(ggplot2)
+library(ggiraph)
+library(mgcv)
+
+# --- INPUTS ---
+# bathy_sd : SpatRaster (SD of depth)
+# polys    : sf with column "ID"
+
+# 0. Make valid + row index -----------------------------------------------
+polys_valid <- polys %>%
+  st_make_valid() %>%
+  mutate(poly_row = dplyr::row_number())
+
+# 1. Centroid lon/lat per polygon + NW–SE gradient ------------------------
+
+# Get centroids and coordinates
+polys_cent <- polys_valid %>%
+  st_centroid(of_largest_polygon = TRUE) %>%
+  mutate(
+    centroid_lon = st_coordinates(.)[, "X"],
+    centroid_lat = st_coordinates(.)[, "Y"]
+  ) %>%
+  st_drop_geometry() %>%
+  select(poly_row, ID, centroid_lon, centroid_lat)
+
+# Build a 1D NW–SE index from (lon, lat) using the first principal component
+coords <- as.matrix(polys_cent[, c("centroid_lon", "centroid_lat")])
+pc <- prcomp(coords, center = TRUE, scale. = FALSE)
+grad_raw <- pc$x[, 1]
+
+# Ensure the gradient increases from NORTH-WEST to SOUTH-EAST:
+# NW = high lat & low lon, SE = low lat & high lon
+ref <- -polys_cent$centroid_lat + polys_cent$centroid_lon
+if (cor(grad_raw, ref) < 0) grad_raw <- -grad_raw
+
+# Scale to [0, 1] for convenience (0 = NW, 1 = SE)
+polys_cent <- polys_cent %>%
+  mutate(
+    grad_nw_se = (grad_raw - min(grad_raw)) /
+                 (max(grad_raw) - min(grad_raw))
+  )
+
+# 2. Extract raster values per polygon ------------------------------------
+df <- bathy_sd %>%
+  terra::extract(terra::vect(polys_valid), df = TRUE) %>%
+  as_tibble() %>%
+  rename(
+    poly_row = 1,
+    bathy_sd = 2
+  ) %>%
+  left_join(polys_cent, by = "poly_row") %>%
+  filter(!is.na(bathy_sd))
+
+# 3. Per-ID stats (median + SD) -------------------------------------------
+df_stats <- df %>%
+  group_by(ID, centroid_lon, centroid_lat, grad_nw_se) %>%
+  summarise(
+    median_bathy_sd = median(bathy_sd, na.rm = TRUE),
+    sd_bathy_sd     = sd(bathy_sd, na.rm = TRUE),
+    .groups         = "drop"
+  ) %>%
+  mutate(
+    ymin = median_bathy_sd - sd_bathy_sd,
+    ymax = median_bathy_sd + sd_bathy_sd,
+    tooltip = paste0(
+      "ID: ", ID, "\n",
+      "Centroid (lon, lat): ",
+      round(centroid_lon, 4), ", ", round(centroid_lat, 4), "\n",
+      "NW–SE index: ", round(grad_nw_se, 3), "\n",
+      "Median SD of depth: ", round(median_bathy_sd, 2), " m\n",
+      "Pixel SD: ±", round(sd_bathy_sd, 2), " m"
+    )
+  )
+
+# 4. GAM model & predictions on NW–SE gradient ----------------------------
+gam_fit <- gam(
+  median_bathy_sd ~ s(grad_nw_se, k = 8),
+  data   = df_stats,
+  method = "REML"
+)
+
+new_grad <- tibble(
+  grad_nw_se = seq(
+    min(df_stats$grad_nw_se, na.rm = TRUE),
+    max(df_stats$grad_nw_se, na.rm = TRUE),
+    length.out = 200
+  )
+)
+
+pred <- predict(
+  gam_fit,
+  newdata = new_grad,
+  se.fit  = TRUE
+)
+
+gam_df <- new_grad %>%
+  mutate(
+    fit   = pred$fit,
+    se    = pred$se.fit,
+    lower = fit - 1.96 * se,
+    upper = fit + 1.96 * se
+  )
+
+# 5. Interactive plot ------------------------------------------------------
+p <- ggplot() +
+  # SD whiskers (interactive)
+  geom_errorbar_interactive(
+    data = df_stats,
+    aes(
+      x       = grad_nw_se,
+      ymin    = ymin,
+      ymax    = ymax,
+      data_id = ID,
+      tooltip = tooltip
+    ),
+    width = 0,
+    alpha = 0.5
+  ) +
+  # Median points (interactive)
+  geom_point_interactive(
+    data = df_stats,
+    aes(
+      x       = grad_nw_se,
+      y       = median_bathy_sd,
+      color   = grad_nw_se,
+      data_id = ID,
+      tooltip = tooltip
+    ),
+    size = 3
+  ) +
+  # GAM uncertainty ribbon (static)
+  geom_ribbon(
+    data = gam_df,
+    aes(
+      x    = grad_nw_se,
+      ymin = lower,
+      ymax = upper
+    ),
+    inherit.aes = FALSE,
+    alpha = 0.2
+  ) +
+  # GAM fitted line (static)
+  geom_line(
+    data = gam_df,
+    aes(
+      x = grad_nw_se,
+      y = fit
+    ),
+    inherit.aes = FALSE,
+    linewidth = 1
+  ) +
+  scale_color_viridis_c(
+    name = "NW–SE gradient\n(0 = NW, 1 = SE)"
+  ) +
+  labs(
+    x = "Position along the north-west to south-east gradient",
+    y = "Median standard deviation of depth (m)",
+    title = "Depth variability along the north-west to south-east gradient\n(GAM fit ± 95% CI)"
+  ) +
+  theme_bw()
+
+g <- girafe(
+  ggobj      = p,
+  width_svg  = 10,
+  height_svg = 6,
+  options = list(
+    opts_hover(css = "stroke:black;stroke-width:2;"),
+    opts_hover_inv(css = "opacity:0.3;"),
+    opts_toolbar(saveaspng = TRUE)
+  )
+)
+
+g
+
+
+
+```

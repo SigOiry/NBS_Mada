@@ -5,6 +5,7 @@ project:
     - index.qmd
     - Bathymetry_Dec2025.qmd
     - Biomass_area_relationships.qmd
+    - Production_vs_Environment.qmd
 website:
   title: "Analysis for NBS, Madagascar"
   navbar:
@@ -15,6 +16,8 @@ website:
         text: Biomass-Area Relationships
       - href: Bathymetry_Dec2025.qmd
         text: Bathymetry of the Lagoon
+      - href: Production_vs_Environment.qmd
+        text: Spatial Variability of the production
 format:
   html:
     theme:
