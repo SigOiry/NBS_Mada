@@ -34,7 +34,7 @@ cadastre <- read_sf("Data/SHP/NBS_cadastre_Dec_2025.shp") %>%
   left_join(prod_2025, by = "Module_ID") %>% 
   dplyr::filter(CultureMode == "Cordes") %>% 
   mutate(Net_Production = Harvested_Weight - 700, 
-         Growth_per_day = Net_Production/CultureDuration_days)
+         Growth_per_day = ((Net_Production/CultureDuration_days)/LinesCount))
 
 
 
@@ -96,7 +96,7 @@ m_med <- leaflet(SG, width = "100%", height = "600px") %>%
     opacity     = 1,
     label = ~paste0("Median: ", round(med, 2), ", SD: ", round(sd, 2))
   ) %>%
-  addLegend(pal = pal_med, values = ~med, title = "Median value", opacity = 1) %>%
+  addLegend(pal = pal_med, values = ~med, title = "Median growth (kg/day/line)", opacity = 1) %>%
   addLayersControl(
     baseGroups = c("ESRI Satellite"),
     options = layersControlOptions(collapsed = TRUE)
@@ -154,6 +154,55 @@ browsable(tagList(
   ")),
   synced
 ))
+```
+
+```{r detailed analysis}
+
+library(sf)
+library(dplyr)
+library(lubridate)
+library(brms)
+
+dat <- cadastre %>%
+  mutate(
+    date  = as.Date(HarvestingDate),
+    doy   = yday(date),
+    month = factor(month(date)),
+    centroid = st_centroid(geometry),
+    x = st_coordinates(centroid)[,1],
+    y = st_coordinates(centroid)[,2]
+  ) %>%
+  select(-centroid)%>%
+  mutate(
+    doy_s = as.numeric(scale(doy)),
+    x_s   = as.numeric(scale(x)),
+    y_s   = as.numeric(scale(y)),
+    growth_s = as.numeric(scale(Growth_per_day))  # optional but recommended
+  )
+
+hist(dat$growth_s)
+
+# ---- Bayesian GAM ----
+b_gam <- brm(
+  growth_s ~
+    s(doy_s, k = 10) +              # seasonal smooth
+    s(x_s, y_s, k = 50) +             # spatial smooth
+    t2(doy_s, x_s, y_s, k = c(10, 30)) +# space-time interaction (tensor product)
+    (1 | Module_ID),              # repeated measures per module
+
+  data = dat,
+  family = gaussian(),            # change if needed (see below)
+  chains = 4, cores = 4, iter = 4000,
+  backend = "cmdstanr",
+  file = "Data/Model/model_Standardised.rds"
+)
+
+summary(b_gam)
+
+plot(conditional_smooths(b_gam))
+
+
+
 ```
 
 

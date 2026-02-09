@@ -28,20 +28,22 @@ library(Utilities.Package)
 #| eval: true
 #| warning: false
 
-df <- read_xlsx("Data/Biomass_estimations/Harvested_measurment/Récolte_01_to_05_dec2025 - NBS.xlsx")%>%
+df <- read_xlsx("Data/Biomass_estimations/Harvested_measurment/NBS - Récolte 2025.xlsx")%>%
   mutate(
-    Farm_chr = str_pad(as.character(`N°Ferme`), 
+    Farm_chr = str_pad(as.character(FarmID), 
                           width = 3, 
                           side = "left", 
                           pad = "0"),
-    plot_id = paste0(Farm_chr,"_",`N°Module`),
-    Remarques = case_when(is.na(Remarques) ~ "M", 
-                          T ~ Remarques)
+    plot_id = paste0(Farm_chr,"_",ModuleNumber)
   ) %>% 
-  dplyr::select(plot_id, Biomass = `Poids récolté`, Remarques)
+  dplyr::filter(HarvestingDate >= as.Date("2025-12-01") & HarvestingDate <= as.Date("2025-12-05")) %>% 
+  dplyr::select(plot_id, Biomass = Harvested_Weight)
+
+cadaster <- read_sf("Data/SHP/NBS_cadastre_Dec_2025.shp") %>% 
+  rename(plot_id = "ID")
+  
 
 ```
-
 
 ```{r shp opening}
 #| echo: false
@@ -49,18 +51,52 @@ df <- read_xlsx("Data/Biomass_estimations/Harvested_measurment/Récolte_01_to_05
 #| message: false
 #| eval: true
 #| warning: false
+#| cache: true
 
-shp_list <- c("Data/Biomass_estimations/MadakapPy_estimations/Run_Day1_AreaEstimation/Pixel_RF_Day1_AreaEstimation.shp","Data/Biomass_estimations/MadakapPy_estimations/Run_Day2_AreaEstimation/Pixel_RF_Day2_AreaEstimation.shp")
+shp_list <- c("Data/Biomass_estimations/MadakapPy_estimations/Run_Day1_AreaEstimation/Pixel_RF_Day1_AreaEstimation.shp",
+              "Data/Biomass_estimations/MadakapPy_estimations/Run_Day2_AreaEstimation/Pixel_RF_Day2_AreaEstimation.shp",
+              "Data/Biomass_estimations/MadakapPy_estimations/Run_Day3_AreaEstimation/Pixel_RF_Day3_AreaEstimation.shp",
+              "Data/Biomass_estimations/MadakapPy_estimations/Run_Day4_AreaEstimation/Pixel_RF_Run_Day4_AreaEstimation.shp",
+              "Data/Biomass_estimations/MadakapPy_estimations/Run_Day5_AreaEstimation/Pixel_RF_Run_Day5_AreaEstimation.shp")
+
+
 
 
 
 for(i in shp_list){
   
-  shp_i <- read_sf(i, quiet = T)
+  shp_i <- read_sf(i, quiet = T) %>%
+  dplyr::rename(rf_class = dplyr::any_of("class")) %>% 
+    dplyr::select(plot_id, rf_class,area_m2)
 
   shp_cleaned <- shp_i %>% 
     dplyr::filter(rf_class %in% c("KappaV","KappaM"))
   
+  assigned_plot_id <- shp_cleaned %>% 
+    group_by(plot_id) %>% 
+    slice(1)
+  
+  shp_centroids <- st_centroid(assigned_plot_id)
+  
+  # 3. Spatial join: assign plot_id from cadaster to shp
+  shp_with_plot <- shp_centroids %>%
+    st_join(
+      cadaster %>% select(plot_id),
+      join = st_within
+    ) %>% 
+    dplyr::select(plot_id.x, plot_id.y) %>% 
+    sf::st_drop_geometry() %>% 
+    rename(plot_id = "plot_id.x",
+           new_id = "plot_id.y") %>% 
+    mutate(plot_id = as.character(plot_id))
+
+  shp_cleaned <- shp_cleaned %>% 
+    mutate(plot_id = as.character(plot_id)) %>% 
+    left_join(shp_with_plot, by = "plot_id") %>% 
+    dplyr::select(-plot_id) %>%
+    dplyr::rename(plot_id = "new_id") %>% 
+    dplyr::select(plot_id,rf_class,area_m2,geometry)
+    
   if(i == shp_list[1]){
     
     shp_cleaned <- shp_cleaned %>% 
@@ -83,15 +119,311 @@ shp_sum <- shp %>%
   summarise(
     area_m2 = sum(area_m2),                  # total area per plot_id × cer_class
     .groups = "drop") %>%
-  group_by(plot_id) %>%
+  group_by(plot_id) %>% 
   summarise(
     total_area_m2 = sum(area_m2),
     dom_rf_class  = rf_class[which.max(area_m2)],  # class with max area
-    .groups = "drop") %>% 
-  mutate(Dom_Class = gsub("Kappa","",dom_rf_class)) %>% 
+    .groups = "drop") %>%
+  mutate(Dom_Class = gsub("Kappa","",dom_rf_class)) %>%
   dplyr::select(-dom_rf_class)
 
+# plot_test <- shp_sum %>% 
+#   pivot_wider(names_from = rf_class, values_from = area_m2) %>% 
+#   ggplot()+
+#   # Points
+#   geom_point_interactive(
+#     # data = df_all,
+#     aes(
+#       x = KappaV,
+#       y = KappaM,
+#       # color = Remarques,
+#       tooltip = paste0(
+#         "Plot: ", plot_id, "\n"
+#       ),
+#       data_id = plot_id  # for hover/selection
+#     ),
+#     size = 4,
+#     alpha = 0.9
+#   )
+# 
+# girafe(
+#   ggobj = plot_test,
+#   options = list(
+#     opts_hover(css = "stroke-width:3;"),
+#     opts_selection(type = "none"),
+#     opts_toolbar(saveaspng = TRUE),
+#     opts_zoom(max = 4)
+#   )
+# )
+# 
+# g
 ```
+
+```{r update gitignore}
+#| echo: false
+#| error: false
+#| message: false
+#| eval: true
+#| warning: false
+ 
+# ---- Parameters ----
+threshold_mb <- 100
+gitignore_path <- ".gitignore"
+
+# Ensure .gitignore exists
+if (!file.exists(gitignore_path)) {
+  file.create(gitignore_path)
+}
+
+# Convert threshold to bytes
+threshold_bytes <- threshold_mb * 1024^2
+
+# List all files recursively (exclude .git directory)
+all_files <- list.files(
+  path = ".",
+  recursive = TRUE,
+  full.names = TRUE,
+  all.files = FALSE
+)
+
+all_files <- all_files[!grepl("^./\\.git/", all_files)]
+
+# Get file sizes
+file_info <- file.info(all_files)
+
+large_files <- rownames(file_info)[
+  !is.na(file_info$size) & file_info$size > threshold_bytes
+]
+
+# Helper: check if file is already git-ignored
+is_git_ignored <- function(file) {
+  res <- system2(
+    "git",
+    c("check-ignore", "-q", shQuote(file)),
+    stdout = NULL,
+    stderr = NULL
+  )
+  res == 0
+}
+
+# Read existing .gitignore
+gitignore_lines <- readLines(gitignore_path, warn = FALSE)
+
+# Add large files if not already ignored
+added <- character()
+
+for (f in large_files) {
+  f_clean <- sub("^\\./", "", f)
+
+  if (!is_git_ignored(f_clean) && !f_clean %in% gitignore_lines) {
+    gitignore_lines <- c(gitignore_lines, f_clean)
+    added <- c(added, f_clean)
+  }
+}
+
+# Write back (unique & sorted)
+gitignore_lines <- sort(unique(gitignore_lines))
+writeLines(gitignore_lines, gitignore_path)
+
+# ---- Summary ----
+if (length(added) == 0) {
+  message("✅ No new files added to .gitignore")
+} else {
+  message("✅ Added to .gitignore:")
+  message(paste("  -", added, collapse = "\n"))
+}
+
+```
+
+
+To remotely estimate the biomass of harvestable algae, a relationship must be established between algal biomass and the area covered by the algae. The covered area can be measured directly from drone imagery. Among the 134 plot harvested between the 1st and the 5th of December 2025, 80 were used to establish the relationship. To be considered valid for the analysis, each plot had to be associated with a drone acquisition conducted either on the day preceding the harvest or on the same day as the harvest, provided that harvesting operations had not yet started at the time of the drone overpass. This ensured that the drone-derived metrics accurately represented pre-harvest conditions and were not affected by biomass removal or disturbance caused by harvesting activities. 
+
+A Random Forest classifier was trained to discriminate four distinct classes: the brown and green morphotypes of Kappaphycus (KappaM and KappaV, respectively), sand, and a fourth class (“Divers”) grouping other benthic components, including bottom vegetation and coral reefs. Random Forest is a supervised classification algorithm that can handle collinearity and non-linear relationships among predictive variables. Each decision tree is built using a random subset of the training data, resampled at each iteration of the algorithm. For each pixel, the final classification is obtained by majority voting, whereby the assigned class corresponds to the class most frequently predicted across all trees.
+
+Training data were generated by manually drawing polygons corresponding to photo-interpreted classes.
+
+For each plot, a Random Forest classifier was applied to the RGB drone orthomosaic to classify individual pixels. The model was trained  (@fig-rslt_rf). 
+
+```{r result RF}
+#| echo: false
+#| error: false
+#| message: false
+#| eval: true
+#| warning: false
+#| fig-cap: Example of the Random Forest classification result for the cultivation plot 043_5. Only the class of Brown Kappaphycus is shown. To visualise the drone image, its resolution as been divided by 2. 
+#| label: fig-rslt_rf
+
+
+library(leaflet)
+library(terra)
+library(sf)
+terraOptions(progress = 0)
+
+img <- suppressWarnings(
+  suppressMessages(
+    rast("Data/SHP/RF_result_Example/background_image_plot_043_5.tif") %>%
+      aggregate(2)
+  )
+)
+
+RGB(img) <- 1:3
+
+rf <- read_sf("Data/SHP/RF_result_Example/RF_result_plot_043_5.shp") %>%
+  st_transform(crs(img))
+
+# Raster extent -> bbox (sf) for fitBounds
+e   <- ext(img)
+bbox <- st_as_sfc(st_bbox(c(xmin=e[1] %>% as.numeric(), ymin=e[3] %>% as.numeric(), xmax=e[2] %>% as.numeric(), ymax=e[4] %>% as.numeric()), crs = crs(img))) %>%
+  st_transform(4326) %>%
+  st_bbox()
+
+leaflet(options = leafletOptions(maxZoom = 28)) %>%
+  addTiles(options = tileOptions(maxZoom = 19)) %>%  # tiles won’t get sharper after 19, but zoom keeps working
+  # fitBounds(bbox["xmin"], bbox["ymin"], bbox["xmax"], bbox["ymax"]) %>%
+
+  addRasterImage(
+    img,
+    opacity = 1,
+    project = TRUE,
+    group = "RGB orthomosaic"
+  ) %>%
+
+  addPolygons(
+    data = rf,
+    color = "darkgreen",
+    weight = 5,
+    fill = "darkgreen",
+    opacity  = 0.3,
+    group = "RF plots"
+  ) %>%
+
+  addLayersControl(
+    overlayGroups = c("RGB orthomosaic", "RF plots"),
+    options = layersControlOptions(collapsed = FALSE)
+  )
+
+
+```
+
+Once the Random Forest classification was applied to each selected cultivation plot, the total surface area occupied by pixels classified as Kappaphycus morphotypes was quantified. Specifically, the areas corresponding to the brown (KappaV) and green (KappaM) morphotypes were calculated by summing the surface of all polygons assigned to these classes (see @eq-AreaEstimationKappa).
+
+$$
+AreaKappa_{total} (m²) = AreaKappa_{vert} + AreaKappa_{Marron}
+$${#eq-AreaEstimationKappa}
+
+The $AreaKappa_{total}$ estimates (m²) for each cultivation plot, obtained from the Random Forest classification, are presented in @tbl-plot_id.
+
+```{r Table of used plot to build the relationship}
+#| echo: false
+#| error: false
+#| message: false
+#| eval: true
+#| warning: false
+#| tbl-cap: Tables summarizing, for each plot, the estimated area covered by Kappaphycus and the corresponding observed biomass.
+#| label: tbl-plot_id
+
+suppressPackageStartupMessages({
+  library(tidyverse)
+  library(ggiraph)
+  library(broom)
+  library(dplyr)
+  library(knitr)
+  library(kableExtra)
+  library(DT)
+  library(terra)
+  library(sf)
+  library(readxl)
+
+
+bathy <- "Data/Bathymetry/depth_avg_29dates.tif" %>% 
+  rast()
+
+Altitude <- "Data/SHP/Harvested_Cadaster/" %>% 
+  list.files(pattern = ".shp", full.names = T) %>% 
+  map(read_sf)%>% 
+  bind_rows() %>% 
+  st_drop_geometry() %>% 
+  dplyr::select(plot_id) %>% 
+  mutate(altitude = "50m")
+
+
+# sf polygons -> terra vector
+cad_v <- vect(cadaster)
+
+# Make CRS match (IMPORTANT)
+if (!same.crs(cad_v, bathy)) {
+  cad_v <- project(cad_v, crs(bathy))
+}
+
+# Mean bathy per polygon
+ext_mean <- terra::extract(bathy, cad_v, fun = mean, na.rm = TRUE)
+
+# ext_mean has an ID column + one column per raster layer
+# Join back by row order (same feature order)
+out <- cadaster %>%
+  mutate(mean_bathy = ext_mean[[2]]) %>%   # 2nd col = raster mean
+  select(plot_id, mean_bathy, everything()) %>% 
+  st_drop_geometry() %>% 
+  dplyr::select(plot_id,mean_bathy)
+
+df_date <-  read_xlsx("Data/Biomass_estimations/Harvested_measurment/NBS - Récolte 2025.xlsx")%>%
+  mutate(
+    Farm_chr = str_pad(as.character(FarmID), 
+                          width = 3, 
+                          side = "left", 
+                          pad = "0"),
+    plot_id = paste0(Farm_chr,"_",ModuleNumber)
+  ) %>% 
+  dplyr::filter(HarvestingDate >= as.Date("2025-12-01") & HarvestingDate <= as.Date("2025-12-05")) %>% 
+  dplyr::select(plot_id, HarvestingDate)
+
+
+# ---- Data prep ----
+df_all_tbl <- df %>% 
+  left_join(shp_sum, by = "plot_id") %>% 
+  dplyr::filter(!is.na(Dom_Class),
+                !(plot_id %in% c("042_6","047_2","041_6","047_1","046_2","046_1","046_4","047_5","047_6"))) %>% 
+  mutate(Remarques = case_when(Dom_Class == "V" ~ "Green Kappa",
+                               T ~ "Brown Kappa")) %>% 
+  left_join(df_date, by = "plot_id") %>% 
+  left_join(out, by = "plot_id") %>% 
+  mutate(totale_volume = total_area_m2 * sqrt(total_area_m2)) %>% 
+  dplyr::select(plot_id,total_area_m2, Biomass)
+
+library(dplyr)
+library(DT)
+
+df_table <- df_all_tbl %>%
+  transmute(
+    plot_id,
+    `Observed Biomass (kg)` = Biomass,
+    `Estimated Area (m²)`   = round(total_area_m2,2)
+  )
+
+DT::datatable(
+  df_table,
+  rownames = FALSE,
+  options = list(
+    pageLength = 15,
+    scrollY = "540px",
+    scrollCollapse = TRUE,
+    paging = FALSE
+  )
+)
+
+})
+```
+
+@fig-Area_Biomass_RS shows a clear overall increase in harvested biomass with increasing total cultivated area ($AreaKappa_{total}$) across all cultivation plots (@eq-Area_Biomass_RS). Despite this general positive trend, a substantial spread in biomass values is observed for a given cultivated area, indicating marked variability in harvested biomass among plots of comparable size.
+
+$$
+Biomass(Kg) = 10.7*AreaKappa_{total}-284
+$${#eq-Area_Biomass_RS}
+
+A dispersion around the regression line is observed, reflecting plot-to-plot variability that may be associated with differences in algal density along cultivation lines, harvesting efficiency, or classification uncertainties in the Random Forest outputs, particularly in discriminating Kappaphycus from other benthic components (mainly bottom macrophyte vegetation). Improving the Random Forest performance for separating Kappaphycus from non-target classes would likely strengthen the observed relationship.
+
+In addition, farmer-dependent practices may contribute to the observed variability, as differences in harvesting techniques could result in variable biomass losses among plots. Accounting for such operational factors may help further explain deviations from the general area–biomass trend.
+
 
 ```{r merging data}
 #| echo: false
@@ -100,16 +432,66 @@ shp_sum <- shp %>%
 #| eval: true
 #| warning: false
 #| fig-cap: Relationship between the area and the Biomass
-#| label: fig-Map_RS
+#| label: fig-Area_Biomass_RS
 
 library(tidyverse)
 library(ggiraph)
 library(broom)
 
+bathy <- "Data/Bathymetry/depth_avg_29dates.tif" %>% 
+  rast()
+
+Altitude <- "Data/SHP/Harvested_Cadaster/" %>% 
+  list.files(pattern = ".shp", full.names = T) %>% 
+  map(read_sf)%>% 
+  bind_rows() %>% 
+  st_drop_geometry() %>% 
+  dplyr::select(plot_id) %>% 
+  mutate(altitude = "50m")
+
+
+# sf polygons -> terra vector
+cad_v <- vect(cadaster)
+
+# Make CRS match (IMPORTANT)
+if (!same.crs(cad_v, bathy)) {
+  cad_v <- project(cad_v, crs(bathy))
+}
+
+# Mean bathy per polygon
+ext_mean <- terra::extract(bathy, cad_v, fun = mean, na.rm = TRUE)
+
+# ext_mean has an ID column + one column per raster layer
+# Join back by row order (same feature order)
+out <- cadaster %>%
+  mutate(mean_bathy = ext_mean[[2]]) %>%   # 2nd col = raster mean
+  select(plot_id, mean_bathy, everything()) %>% 
+  st_drop_geometry() %>% 
+  dplyr::select(plot_id,mean_bathy)
+
+df_date <-  read_xlsx("Data/Biomass_estimations/Harvested_measurment/NBS - Récolte 2025.xlsx")%>%
+  mutate(
+    Farm_chr = str_pad(as.character(FarmID), 
+                          width = 3, 
+                          side = "left", 
+                          pad = "0"),
+    plot_id = paste0(Farm_chr,"_",ModuleNumber)
+  ) %>% 
+  dplyr::filter(HarvestingDate >= as.Date("2025-12-01") & HarvestingDate <= as.Date("2025-12-05")) %>% 
+  dplyr::select(plot_id, HarvestingDate)
+
+
 # ---- Data prep ----
 df_all <- df %>% 
   left_join(shp_sum, by = "plot_id") %>% 
-  dplyr::filter(!is.na(Dom_Class))
+  dplyr::filter(!is.na(Dom_Class),
+                !(plot_id %in% c("042_6","047_2","041_6","047_1","046_2","046_1","046_4","047_5","047_6"))) %>% 
+  mutate(Remarques = case_when(Dom_Class == "V" ~ "Green Kappa",
+                               T ~ "Brown Kappa")) %>% 
+  left_join(df_date, by = "plot_id") %>% 
+  left_join(out, by = "plot_id") %>% 
+  mutate(totale_volume = total_area_m2 * sqrt(total_area_m2))
+
 
 # ---- Fit a simple linear model (Biomass ~ total_area_m2) ----
 fit_lm <- lm(Biomass ~ total_area_m2, data = df_all)
@@ -146,6 +528,12 @@ eq_label <- paste0(
   "R² = ", r2_val
 )
 
+
+
+df_all <- df_all %>% 
+  left_join(Altitude, by = "plot_id") %>% 
+  mutate(altitude = case_when(is.na(altitude) ~ "120m",
+                              T ~ altitude))
 # ---- Interactive plot ----
 p <- ggplot() +
   # 95% CI ribbon
@@ -189,10 +577,10 @@ p <- ggplot() +
   )+
   scale_color_manual(
     values = c(
-      "V" = "darkgreen",  # dark green
-      "M" = "brown"   # brown
+      "Green Kappa" = "darkgreen",  # dark green
+      "Brown Kappa" = "brown"   # brown
     ),
-    labels = c("Marron","Vert")
+    labels = c("Brown Kappa","Green Kappa")
   ) +
   labs(
     title    = "Relationship between plot area and biomass",
@@ -201,6 +589,7 @@ p <- ggplot() +
     y        = "Biomass",
     color    = "Remarks"
   ) +
+  ylim(c(1000,5000))+
   # Keep your custom theme if you like it
   theme_Bede() +
   theme(
@@ -218,12 +607,201 @@ g <- girafe(
     opts_zoom(max = 4)
   )
 )
-
 g
 
+```
+
+@fig-Estimation_error_morph presents the estimated error in harvested algal biomass for each Kappaphycus morphotype. The workflow shows a systematic overestimation of biomass for the green morphotype, with an average positive bias of approximately 15%. In contrast, biomass estimates for the brown morphotype tend to be slightly underestimated, with an average negative bias of about 4%.
+
+```{r error distribution between morphotypes}
+#| echo: false
+#| error: false
+#| message: false
+#| eval: true
+#| warning: false
+#| fig-cap: Error in the estimation of harvested biomass of each morphotype of Kappaphycus. 
+#| label: fig-Estimation_error_morph
+
+library(ggplot2)
+library(dplyr)
+library(scales)
+
+# --- 0) Build df_error as a TRUE sf object (keep geometry from cadaster) ----
+err_tbl <- df_all %>%
+  # dplyr::select(plot_id, Biomass, total_area_m2) %>%
+  mutate(
+    estimated_biomass = -284 + 10.7 * total_area_m2,
+    error = Biomass - estimated_biomass
+  ) %>% 
+  left_join(cadaster, by = "plot_id") %>% 
+  st_as_sf() %>% 
+  st_transform(4326)
+
+
+df_error <- err_tbl %>%
+  mutate(
+    error_pct = ifelse(
+      Biomass == 0 | is.na(Biomass),
+      NA_real_,
+      100 * (Biomass - estimated_biomass) / Biomass
+    )
+  )
+
+
+
+df_error %>% 
+  ggplot(aes(x = Remarques, y = error_pct, fill = Remarques)) +
+  
+  # zero reference
+  geom_hline(yintercept = 0, linetype = "dashed", color = "grey40") +
+  
+  # boxplot
+  geom_boxplot(
+    width = 0.55,
+    alpha = 0.8,
+    outlier.shape = NA,
+    color = "grey20"
+  ) +
+  
+  # # jittered points (subtle, informative)
+  # geom_jitter(
+  #   width = 0.12,
+  #   size = 2,
+  #   alpha = 0.6,
+  #   color = "grey20"
+  # ) +
+  
+  scale_fill_manual(
+    values = c(
+      "Green Kappa" = "#2ca25f",
+      "Brown Kappa" = "#b15928"
+    )
+  ) +
+  
+  scale_y_continuous(
+    labels = label_percent(scale = 1),
+    expand = expansion(mult = c(0.05, 0.1))
+  ) +
+  
+  labs(
+    x = NULL,
+    y = "Biomass estimation error (%)",
+    title = "Relative biomass estimation error by Kappa morphotypes",
+    subtitle = "Positive values indicate biomass overestimation",
+    fill = NULL
+  ) +
+  
+  theme_minimal(base_size = 13) +
+  theme(
+    legend.position = "none",
+    panel.grid.major.x = element_blank(),
+    panel.grid.minor = element_blank(),
+    plot.title = element_text(face = "bold"),
+    axis.text.x = element_text(face = "bold")
+  )
+
+```
+
+Analysis of the spatial pattern of the estimation error (@fig-Estimation_error_map) indicates a pronounced overestimation of biomass in the northernmost sector of the lagoon, which coincides with the area covered by the drone imagery used for training the Random Forest classifier. This spatial correspondence suggests that the training data distribution may have influenced the accuracy of biomass estimation across the lagoon.
+
+```{r spatial repartition of the error}
+#| echo: false
+#| error: false
+#| message: false
+#| eval: true
+#| warning: false
+#| fig-cap: Spatial distribution of the error in the estimation of the biomass
+#| label: fig-Estimation_error_map
+
+library(sf)
+library(dplyr)
+library(leaflet)
+library(htmltools)
+
+# --- 0) Build df_error as a TRUE sf object (keep geometry from cadaster) ----
+err_tbl <- df_all %>%
+  # dplyr::select(plot_id, Biomass, total_area_m2) %>%
+  mutate(
+    estimated_biomass = -284 + 10.7 * total_area_m2,
+    error = Biomass - estimated_biomass
+  ) %>% 
+  left_join(cadaster, by = "plot_id") %>% 
+  st_as_sf() %>% 
+  st_transform(4326)
+
+
+df_error <- err_tbl %>%
+  mutate(
+    error_pct = ifelse(
+      Biomass == 0 | is.na(Biomass),
+      NA_real_,
+      100 * (Biomass - estimated_biomass) / Biomass
+    )
+  )
+
+
+
+stopifnot(inherits(df_error, "sf"))
+
+max_abs_err <- max(abs(df_error$error_pct), na.rm = TRUE)
+
+pal_err <- colorNumeric(
+  palette = colorRampPalette(c("#2c7bb6", "#f7f7f7", "#d7191c"))(256),
+  domain  = c(-max_abs_err, max_abs_err)
+)
+
+# Optional: show NA plots in grey
+na_fill <- "#BDBDBD"
+
+# --- 2) Labels / popups -----------------------------------------------------
+df_error <- df_error %>%
+  mutate(
+    lab = sprintf(
+      "Plot: %s<br/>
+       Biomass: %.1f<br/>
+       Estimated: %.1f<br/>
+       <b>Error: %.1f %%</b>",
+      plot_id, Biomass, estimated_biomass, error_pct
+    )
+  )
+
+# --- 3) Leaflet map ---------------------------------------------------------
+m <- leaflet(df_error) %>%
+  addProviderTiles(providers$Esri.WorldImagery, group = "Esri Satellite") %>%
+
+  addPolygons(
+    fillColor   = ~ifelse(is.na(error_pct), "#BDBDBD", pal_err(error_pct)),
+    fillOpacity = 0.75,
+    group       = "Error (obs - est)",
+    color       = "black",
+    weight      = 1,
+    label       = ~lapply(lab, HTML),
+    popup       = ~lapply(lab, HTML),
+    highlightOptions = highlightOptions(
+      weight = 3, color = "yellow", bringToFront = TRUE
+    )
+  ) %>%
+
+  addLegend(
+    pal      = pal_err,
+    values   = c(-max_abs_err, max_abs_err),
+    title    = HTML("Biomass error (%)<br/>(obs − est) / obs"),
+    position = "bottomright"
+  ) %>%
+
+  addLayersControl(
+    baseGroups    = c("Esri Satellite"),
+    overlayGroups = c("Error (obs - est)"),
+    options       = layersControlOptions(collapsed = FALSE)
+  )
+
+m
 
 
 
 ```
 
 
+In summary, further improvement of the area–biomass relationship would require particular attention to several key aspects. First, enhancing the Random Forest classification performance, especially for discriminating Kappaphycus from other benthic vegetation, would reduce uncertainty in the area estimates. Second, extending the analysis beyond a univariate framework by incorporating additional explanatory variables in a multivariate approach could better capture external drivers of biomass variability.
+
+As an initial step, two readily available variables could be considered: farmer identity and a cultivation density index. For a given cultivated area, plots where algae are densely packed along the cultivation lines are expected to yield higher biomass than plots where lines remain clearly distinguishable, despite having similar surface coverage. Accounting for such differences would likely improve the robustness and predictive power of the relationship between cultivated area and harvested biomass.

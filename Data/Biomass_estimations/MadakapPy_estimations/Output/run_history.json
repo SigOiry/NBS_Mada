@@ -1,0 +1,143 @@
+[
+  {
+    "id": "Day3_AreaEstimation",
+    "label": "2026-02-06 20:11:55 (RF - Day3_AreaEstimation)",
+    "mode": "rf",
+    "completed_at": "2026-02-06T20:11:55.307078",
+    "summary": "Workflow complete. Classification saved to:\nC:\\Users\\Simon\\Nextcloud\\Project\\Madagascar\\NBS_Mada\\Data\\Biomass_estimations\\MadakapPy_estimations\\Output\\PixelRF\\Run_Day3_AreaEstimation\\Pixel_RF_Day3_AreaEstimation.shp",
+    "result_path": "C:\\Users\\Simon\\Nextcloud\\Project\\Madagascar\\NBS_Mada\\Data\\Biomass_estimations\\MadakapPy_estimations\\Output\\PixelRF\\Run_Day3_AreaEstimation\\Pixel_RF_Day3_AreaEstimation.shp",
+    "preview_map": "C:\\Users\\Simon\\Nextcloud\\Project\\Madagascar\\NBS_Mada\\Data\\Biomass_estimations\\MadakapPy_estimations\\Output\\PixelRF\\Run_Day3_AreaEstimation\\Pixel_RF_Day3_AreaEstimation_map.html",
+    "aoi_path": "C:\\Users\\Simon\\Nextcloud\\Project\\Madagascar\\NBS_Mada\\Data\\Biomass_estimations\\MadakapPy_estimations\\Output\\0-Preselection\\Run_2026-02-06_185827\\cadaster_day3_in_raster.shp",
+    "run_folder": "C:\\Users\\Simon\\Nextcloud\\Project\\Madagascar\\NBS_Mada\\Data\\Biomass_estimations\\MadakapPy_estimations\\Output\\PixelRF\\Run_Day3_AreaEstimation",
+    "settings": {
+      "input_raster": "C:\\Users\\Simon\\Nextcloud\\Project\\Madagascar\\NBS_Mada\\Data\\Drone_Flights\\M3E_20251202_50m_Zone_CDE_32739.tif",
+      "output_dir": "C:\\Users\\Simon\\Nextcloud\\Project\\Madagascar\\NBS_Mada\\Data\\Biomass_estimations\\MadakapPy_estimations",
+      "custom_aoi": "C:\\Users\\Simon\\Nextcloud\\Project\\Madagascar\\NBS_Mada\\Data\\SHP\\Harvested_Cadaster\\cadaster_day3.shp",
+      "aoi_source": "custom",
+      "run_name": "Day3_AreaEstimation",
+      "preselection": {
+        "min_width_m": 5.0,
+        "max_width_m": 20.0,
+        "min_length_m": 20.0,
+        "max_length_m": 60.0,
+        "small_polygon_buffer_m": 0.3,
+        "blue_quantile": 0.15,
+        "enabled": false
+      },
+      "classification": {
+        "model_path": "C:\\Users\\Simon\\Documents\\GiHub\\Madakappy\\Model\\RF_Morphotypes_Kappa.joblib",
+        "max_pixels_per_polygon": 200,
+        "biomass_mode": "preset",
+        "biomass_model": "mada_drone",
+        "biomass_formula": null,
+        "growth_rate_pct": 5.8,
+        "growth_rate_sd": 0.7
+      },
+      "training": {
+        "training_image": "C:\\Users\\Simon\\Nextcloud\\Project\\Madagascar\\NBS_Mada\\Data\\Drone_Flights\\M3E_20251202_50m_Zone_CDE_32739.tif",
+        "training_polygons": "",
+        "class_column": "",
+        "max_pixels_per_class": 0,
+        "model_name": ""
+      }
+    },
+    "metrics": {
+      "aois": 28
+    },
+    "output_root": "C:\\Users\\Simon\\Nextcloud\\Project\\Madagascar\\NBS_Mada\\Data\\Biomass_estimations\\MadakapPy_estimations\\Output"
+  },
+  {
+    "id": "Run_Day4_AreaEstimation",
+    "label": "2026-02-06 21:54:32 (RF - Run_Day4_AreaEstimation)",
+    "mode": "rf",
+    "completed_at": "2026-02-06T21:54:32.716008",
+    "summary": "Workflow complete. Classification saved to:\nC:\\Users\\Simon\\Nextcloud\\Project\\Madagascar\\NBS_Mada\\Data\\Biomass_estimations\\MadakapPy_estimations\\Output\\PixelRF\\Run_Run_Day4_AreaEstimation\\Pixel_RF_Run_Day4_AreaEstimation.shp",
+    "result_path": "C:\\Users\\Simon\\Nextcloud\\Project\\Madagascar\\NBS_Mada\\Data\\Biomass_estimations\\MadakapPy_estimations\\Output\\PixelRF\\Run_Run_Day4_AreaEstimation\\Pixel_RF_Run_Day4_AreaEstimation.shp",
+    "preview_map": "C:\\Users\\Simon\\Nextcloud\\Project\\Madagascar\\NBS_Mada\\Data\\Biomass_estimations\\MadakapPy_estimations\\Output\\PixelRF\\Run_Run_Day4_AreaEstimation\\Pixel_RF_Run_Day4_AreaEstimation_map.html",
+    "aoi_path": "C:\\Users\\Simon\\Nextcloud\\Project\\Madagascar\\NBS_Mada\\Data\\Biomass_estimations\\MadakapPy_estimations\\Output\\0-Preselection\\Run_2026-02-06_204726\\cadaster_day4_in_raster.shp",
+    "run_folder": "C:\\Users\\Simon\\Nextcloud\\Project\\Madagascar\\NBS_Mada\\Data\\Biomass_estimations\\MadakapPy_estimations\\Output\\PixelRF\\Run_Run_Day4_AreaEstimation",
+    "settings": {
+      "input_raster": "C:\\Users\\Simon\\Nextcloud\\Project\\Madagascar\\NBS_Mada\\Data\\Drone_Flights\\M3E_20251203_50m_Zone_DE_32739.tif",
+      "output_dir": "C:\\Users\\Simon\\Nextcloud\\Project\\Madagascar\\NBS_Mada\\Data\\Biomass_estimations\\MadakapPy_estimations",
+      "custom_aoi": "C:\\Users\\Simon\\Nextcloud\\Project\\Madagascar\\NBS_Mada\\Data\\SHP\\Harvested_Cadaster\\cadaster_day4.shp",
+      "aoi_source": "custom",
+      "run_name": "Run_Day4_AreaEstimation",
+      "preselection": {
+        "min_width_m": 5.0,
+        "max_width_m": 20.0,
+        "min_length_m": 20.0,
+        "max_length_m": 60.0,
+        "small_polygon_buffer_m": 0.3,
+        "blue_quantile": 0.15,
+        "enabled": false
+      },
+      "classification": {
+        "model_path": "C:\\Users\\Simon\\Documents\\GiHub\\Madakappy\\Model\\RF_Morphotypes_Kappa.joblib",
+        "max_pixels_per_polygon": 200,
+        "biomass_mode": "preset",
+        "biomass_model": "madagascar",
+        "biomass_formula": null,
+        "growth_rate_pct": 5.8,
+        "growth_rate_sd": 0.7
+      },
+      "training": {
+        "training_image": "C:\\Users\\Simon\\Nextcloud\\Project\\Madagascar\\NBS_Mada\\Data\\Drone_Flights\\M3E_20251203_50m_Zone_DE_32739.tif",
+        "training_polygons": "",
+        "class_column": "",
+        "max_pixels_per_class": 0,
+        "model_name": ""
+      }
+    },
+    "metrics": {
+      "aois": 25
+    },
+    "output_root": "C:\\Users\\Simon\\Nextcloud\\Project\\Madagascar\\NBS_Mada\\Data\\Biomass_estimations\\MadakapPy_estimations\\Output"
+  },
+  {
+    "id": "Run_Day5_AreaEstimation",
+    "label": "2026-02-07 15:41:56 (RF - Run_Day5_AreaEstimation)",
+    "mode": "rf",
+    "completed_at": "2026-02-07T15:41:56.324088",
+    "summary": "Workflow complete. Classification saved to:\nC:\\Users\\Simon\\Nextcloud\\Project\\Madagascar\\NBS_Mada\\Data\\Biomass_estimations\\MadakapPy_estimations\\Output\\PixelRF\\Run_Run_Day5_AreaEstimation\\Pixel_RF_Run_Day5_AreaEstimation.shp",
+    "result_path": "C:\\Users\\Simon\\Nextcloud\\Project\\Madagascar\\NBS_Mada\\Data\\Biomass_estimations\\MadakapPy_estimations\\Output\\PixelRF\\Run_Run_Day5_AreaEstimation\\Pixel_RF_Run_Day5_AreaEstimation.shp",
+    "preview_map": "C:\\Users\\Simon\\Nextcloud\\Project\\Madagascar\\NBS_Mada\\Data\\Biomass_estimations\\MadakapPy_estimations\\Output\\PixelRF\\Run_Run_Day5_AreaEstimation\\Pixel_RF_Run_Day5_AreaEstimation_map.html",
+    "aoi_path": "C:\\Users\\Simon\\Nextcloud\\Project\\Madagascar\\NBS_Mada\\Data\\Biomass_estimations\\MadakapPy_estimations\\Output\\0-Preselection\\Run_2026-02-07_151011\\cadaster_day5_in_raster.shp",
+    "run_folder": "C:\\Users\\Simon\\Nextcloud\\Project\\Madagascar\\NBS_Mada\\Data\\Biomass_estimations\\MadakapPy_estimations\\Output\\PixelRF\\Run_Run_Day5_AreaEstimation",
+    "settings": {
+      "input_raster": "C:\\Users\\Simon\\Nextcloud\\Project\\Madagascar\\NBS_Mada\\Data\\Drone_Flights\\M3E_20251203_50m_Zone_DE_32739.tif",
+      "output_dir": "C:\\Users\\Simon\\Nextcloud\\Project\\Madagascar\\NBS_Mada\\Data\\Biomass_estimations\\MadakapPy_estimations",
+      "custom_aoi": "C:\\Users\\Simon\\Nextcloud\\Project\\Madagascar\\NBS_Mada\\Data\\SHP\\Harvested_Cadaster\\cadaster_day5.shp",
+      "aoi_source": "custom",
+      "run_name": "Run_Day5_AreaEstimation",
+      "preselection": {
+        "min_width_m": 5.0,
+        "max_width_m": 20.0,
+        "min_length_m": 20.0,
+        "max_length_m": 60.0,
+        "small_polygon_buffer_m": 0.3,
+        "blue_quantile": 0.15,
+        "enabled": false
+      },
+      "classification": {
+        "model_path": "C:\\Users\\Simon\\Documents\\GiHub\\Madakappy\\Model\\RF_Morphotypes_Kappa.joblib",
+        "max_pixels_per_polygon": 200,
+        "biomass_mode": "preset",
+        "biomass_model": "madagascar",
+        "biomass_formula": null,
+        "growth_rate_pct": 5.8,
+        "growth_rate_sd": 0.7
+      },
+      "training": {
+        "training_image": "C:\\Users\\Simon\\Nextcloud\\Project\\Madagascar\\NBS_Mada\\Data\\Drone_Flights\\M3E_20251203_50m_Zone_DE_32739.tif",
+        "training_polygons": "",
+        "class_column": "",
+        "max_pixels_per_class": 0,
+        "model_name": ""
+      }
+    },
+    "metrics": {
+      "aois": 3
+    },
+    "output_root": "C:\\Users\\Simon\\Nextcloud\\Project\\Madagascar\\NBS_Mada\\Data\\Biomass_estimations\\MadakapPy_estimations\\Output"
+  }
+]
