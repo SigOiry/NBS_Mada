@@ -1,0 +1,774 @@
+---
+title: "Multivariate estimation of Biomass"
+author: "Simon Oiry"
+editor_options: 
+  chunk_output_type: console
+---
+
+
+This page shows result of the amelioration of the estimation of *in-situ* biomass of kappaphycus using drone. The originial univariate linéare relationship can be found [here](https://sigoiry.github.io/NBS_Mada/Biomass_area_relationships.html). This relationship link the area covered by kappaphycus in each cultivation plot and links it with the harvested biomass with a R² of 0.49. 
+
+One source of variability is illustrated in [Figure 1](https://sigoiry.github.io/NBS_Mada/Biomass_area_relationships.html#fig-rslt_rf) of the univariate results. The cultivation plot exhibits pronounced spatial heterogeneity in algal density, with the north-western sector being less dense than the south-eastern part. As density increases within a plot, a saturation effect emerges in the two-dimensional drone imagery: the horizontal surface (x–y plane) becomes fully occupied by algae, while biomass continues to increase through vertical accumulation rather than further lateral expansion. This decoupling between surface area and biomass introduces uncertainty into the area–biomass relationship. To address this limitation, the following chapter introduces a density metric designed to account for biomass increases occurring without additional spatial expansion.
+
+The [Yearly production figure](https://sigoiry.github.io/NBS_Mada/Production_vs_Environment.html#fig-map_productivity) shows that production of algae is not homogeneous along amoung all cultivation plot. To take into account for this variability when predicting the biomass, the average production of each module (along with its variability) could be added to the model. 
+
+
+# Multivariate modelling approaches
+
+Two complementary approaches were applied to estimate harvested biomass from drone-derived and production-derived predictors: a Neural Network model and a General Additive Model. Use the model buttons below to display one complete section at a time (material and methods + results).
+
+The General Additive Model (GAM) provides high interpretability, explicit uncertainty intervals, and smooth response surfaces that are well suited to ecological analysis; however, it can be less flexible when interactions become highly complex and may require careful smoothing choices. The Neural Network is more flexible for nonlinear multivariate patterns and can improve predictive performance in complex settings; however, it is less directly interpretable, does not natively provide Bayesian uncertainty intervals in this configuration, and is more sensitive to tuning and reproducibility settings.
+
+
+```{r library}
+#| echo: false
+#| error: false
+#| message: false
+#| eval: true
+#| warning: false
+
+
+library(tidyverse)
+library(terra)
+library(sf)
+library(readxl)
+library(Utilities.Package)
+```
+
+```{r open xlsx}
+#| echo: false
+#| error: false
+#| message: false
+#| eval: false
+#| warning: false
+
+df <- read_xlsx("Data/Biomass_estimations/Harvested_measurment/NBS - Récolte 2025.xlsx")%>%
+  mutate(
+    Farm_chr = str_pad(as.character(FarmID), 
+                          width = 3, 
+                          side = "left", 
+                          pad = "0"),
+    plot_id = paste0(Farm_chr,"_",ModuleNumber)
+  ) %>% 
+  dplyr::filter(HarvestingDate >= as.Date("2025-12-01") & HarvestingDate <= as.Date("2025-12-05")) %>% 
+  dplyr::select(plot_id, Biomass = Harvested_Weight)
+
+cadaster <- read_sf("Data/SHP/NBS_cadastre_Dec_2025.shp") %>% 
+  rename(plot_id = "ID")
+
+
+
+
+  
+
+```
+
+```{r shp opening}
+#| echo: false
+#| error: false
+#| message: false
+#| eval: false
+#| warning: false
+
+shp_list <- c("Data/Biomass_estimations/MadakapPy_estimations/Run_Day1_AreaEstimation/Pixel_RF_Day1_AreaEstimation.shp",
+              "Data/Biomass_estimations/MadakapPy_estimations/Run_Day2_AreaEstimation/Pixel_RF_Day2_AreaEstimation.shp",
+              "Data/Biomass_estimations/MadakapPy_estimations/Run_Day3_AreaEstimation/Pixel_RF_Day3_AreaEstimation.shp",
+              "Data/Biomass_estimations/MadakapPy_estimations/Run_Day4_AreaEstimation/Pixel_RF_Run_Day4_AreaEstimation.shp",
+              "Data/Biomass_estimations/MadakapPy_estimations/Run_Day5_AreaEstimation/Pixel_RF_Run_Day5_AreaEstimation.shp")
+
+
+
+
+
+for(i in shp_list){
+  
+  shp_i <- read_sf(i, quiet = T) %>%
+  dplyr::rename(rf_class = dplyr::any_of("class")) %>% 
+    dplyr::select(plot_id, rf_class,area_m2)
+
+  shp_cleaned <- shp_i %>% 
+    dplyr::filter(rf_class %in% c("KappaV","KappaM"))
+  
+  assigned_plot_id <- shp_cleaned %>% 
+    group_by(plot_id) %>% 
+    slice(1)
+  
+  shp_centroids <- st_centroid(assigned_plot_id)
+  
+  # 3. Spatial join: assign plot_id from cadaster to shp
+  shp_with_plot <- shp_centroids %>%
+    st_join(
+      cadaster %>% select(plot_id),
+      join = st_within
+    ) %>% 
+    dplyr::select(plot_id.x, plot_id.y) %>% 
+    sf::st_drop_geometry() %>% 
+    rename(plot_id = "plot_id.x",
+           new_id = "plot_id.y") %>% 
+    mutate(plot_id = as.character(plot_id))
+
+  shp_cleaned <- shp_cleaned %>% 
+    mutate(plot_id = as.character(plot_id)) %>% 
+    left_join(shp_with_plot, by = "plot_id") %>% 
+    dplyr::select(-plot_id) %>%
+    dplyr::rename(plot_id = "new_id") %>% 
+    dplyr::select(plot_id,rf_class,area_m2,geometry)
+    
+  if(i == shp_list[1]){
+    
+    shp_cleaned <- shp_cleaned %>% 
+      dplyr::filter(plot_id %in% c("144_6","130_5","124_1","123_1","119_6","120_6","113_1"))
+    
+    shp <- shp_cleaned
+  }else{
+    shp <- rbind(shp, shp_cleaned)
+  }
+}
+
+shp <- shp %>% 
+  dplyr::select(plot_id,rf_class)
+
+shp_sum <- shp %>%
+  mutate(
+    area_m2 = as.numeric(st_area(geometry))) %>%
+  st_drop_geometry() %>%
+  group_by(plot_id, rf_class) %>%
+  summarise(
+    area_m2 = sum(area_m2),                  # total area per plot_id × cer_class
+    .groups = "drop") %>%
+  group_by(plot_id) %>% 
+  summarise(
+    total_area_m2 = sum(area_m2),
+    dom_rf_class  = rf_class[which.max(area_m2)],  # class with max area
+    .groups = "drop") %>%
+  mutate(Dom_Class = gsub("Kappa","",dom_rf_class)) %>%
+  dplyr::select(-dom_rf_class)
+
+# plot_test <- shp_sum %>% 
+#   pivot_wider(names_from = rf_class, values_from = area_m2) %>% 
+#   ggplot()+
+#   # Points
+#   geom_point_interactive(
+#     # data = df_all,
+#     aes(
+#       x = KappaV,
+#       y = KappaM,
+#       # color = Remarques,
+#       tooltip = paste0(
+#         "Plot: ", plot_id, "\n"
+#       ),
+#       data_id = plot_id  # for hover/selection
+#     ),
+#     size = 4,
+#     alpha = 0.9
+#   )
+# 
+# girafe(
+#   ggobj = plot_test,
+#   options = list(
+#     opts_hover(css = "stroke-width:3;"),
+#     opts_selection(type = "none"),
+#     opts_toolbar(saveaspng = TRUE),
+#     opts_zoom(max = 4)
+#   )
+# )
+# 
+# g
+```
+
+```{r density estimation}
+#| echo: false
+#| error: false
+#| message: false
+#| eval: false
+#| warning: false
+
+library(sf)
+library(dplyr)
+library(units)
+library(progress)
+library(purrr)
+
+# ---- settings
+out_path <- "Data/Multivariate_Analysis/totale_extent_cultivation_plots.shp"
+area_thresh <- units::set_units(750, cm^2)
+simp_tol <- 2
+buf_dist <- 5
+
+
+shp <- shp %>% 
+  mutate(plot_id = case_when(is.na(plot_id) ~ "114_3",
+                             T ~ plot_id)) 
+  # dplyr::filter(plot_id == "056_1")
+# ---- precompute ids once
+plot_ids <- unique(shp$plot_id)
+n <- length(plot_ids)
+
+# ---- progress bar
+pb <- progress_bar$new(
+  format = "  [:bar] :current/:total (:percent) | eta: :eta | plot_id: :message",
+  total = n,
+  clear = FALSE,
+  width = 60
+)
+
+# ---- helper to be safe with validity
+make_valid_if_needed <- function(x) {
+  if (any(!st_is_valid(x))) st_make_valid(x) else x
+}
+
+
+# ---- build results in a list (fast), combine once
+res <- vector("list", n)
+
+for (i in seq_along(plot_ids)) {
+  plot_i <- plot_ids[i]
+
+  pb$message(as.character(plot_i))
+
+  shp_i <- shp %>% filter(plot_id == plot_i)
+
+  shp_big <- shp_i %>% 
+    filter(st_area(geometry) > area_thresh)
+
+  if (nrow(shp_big) == 0) {
+    res[[i]] <- NULL
+    pb$tick()
+    next
+  }
+
+  g0 <- shp_big %>%
+    st_make_valid() %>%
+    st_union() %>%
+    st_collection_extract("POLYGON")
+
+  g0 <- make_valid_if_needed(g0)
+
+  g_clean <- g0 %>%
+    st_simplify(dTolerance = simp_tol*3, preserveTopology = TRUE) %>%
+    # st_drop_holes() %>% 
+    st_buffer(+buf_dist, nQuadSegs = 8) %>%
+    st_buffer(-buf_dist, nQuadSegs = 8)
+
+  g_clean <- make_valid_if_needed(g_clean)
+
+  res[[i]] <- st_as_sf(g_clean) %>%
+    mutate(plot_id = plot_i)
+
+  pb$tick()
+}
+
+# ---- combine + write once
+plot_ext_simple <- do.call(rbind, res[!vapply(res, is.null, logical(1))])
+
+if (nrow(plot_ext_simple) > 0) {
+  write_sf(plot_ext_simple, out_path, overwrite = TRUE)
+} else {
+  warning("No plots produced any geometry above the area threshold.")
+}
+
+
+write_sf(shp, "Data/Multivariate_Analysis/RF_Morphotypes_classification.shp")
+
+
+```
+
+```{=html}
+<style>
+.model-toggle-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin: 1rem 0 1.25rem 0;
+}
+.model-toggle-btn {
+  padding: 0.55rem 1rem;
+  border: 1px solid #1f6d8a;
+  border-radius: 0.45rem;
+  background: #ffffff;
+  color: #1f6d8a;
+  font-weight: 600;
+  cursor: pointer;
+}
+.model-toggle-btn.is-active {
+  background: #1f6d8a;
+  color: #ffffff;
+}
+.model-panel {
+  display: none;
+}
+.model-panel.is-active {
+  display: block;
+}
+</style>
+
+<div class="model-toggle-controls" role="group" aria-label="Model selector">
+  <button id="btn-nn" class="model-toggle-btn is-active" type="button" aria-pressed="true">Neural Network</button>
+  <button id="btn-gam" class="model-toggle-btn" type="button" aria-pressed="false">General Additive Model</button>
+</div>
+
+<script>
+(function () {
+  function setActiveModel(model) {
+    var isNN = model === "nn";
+    var btnNN = document.getElementById("btn-nn");
+    var btnGAM = document.getElementById("btn-gam");
+    var panelNN = document.getElementById("panel-nn");
+    var panelGAM = document.getElementById("panel-gam");
+
+    if (!btnNN || !btnGAM || !panelNN || !panelGAM) return;
+
+    btnNN.classList.toggle("is-active", isNN);
+    btnGAM.classList.toggle("is-active", !isNN);
+    panelNN.classList.toggle("is-active", isNN);
+    panelGAM.classList.toggle("is-active", !isNN);
+
+    btnNN.setAttribute("aria-pressed", isNN ? "true" : "false");
+    btnGAM.setAttribute("aria-pressed", isNN ? "false" : "true");
+  }
+
+  function initModelToggle() {
+    var btnNN = document.getElementById("btn-nn");
+    var btnGAM = document.getElementById("btn-gam");
+    if (!btnNN || !btnGAM) return;
+
+    btnNN.addEventListener("click", function () { setActiveModel("nn"); });
+    btnGAM.addEventListener("click", function () { setActiveModel("gam"); });
+    setActiveModel("nn");
+  }
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", initModelToggle);
+  } else {
+    initModelToggle();
+  }
+
+  window.setActiveModel = setActiveModel;
+})();
+</script>
+```
+
+::: {#panel-nn .model-panel .is-active}
+## Neural Network
+
+### Material and methods
+
+The neural network model was built to predict harvested biomass from the same explanatory variables used in the additive model: estimated algal surface (`area_rf`), percent cover (`pc`), median module productivity (`med`), and productivity variability (`sd`). The response was modelled on the logarithmic scale:
+
+$$
+y_i = \log(\mathrm{Biomass}_i)
+$$
+
+All predictors were standardized using z-score scaling:
+
+$$
+x^{\ast}_{ij} = \frac{x_{ij} - \mu_j}{\sigma_j}
+$$
+
+where $\mu_j$ and $\sigma_j$ are the training-set mean and standard deviation of predictor $j$. The neural architecture was a feed-forward multilayer perceptron with one input layer, two hidden dense layers (32 and 16 units, ReLU activation), and a linear output layer (1 unit). A dropout layer (rate = 0.2) was inserted between hidden layers to reduce overfitting. The model was trained with the Adam optimizer (learning rate $10^{-3}$), mean squared error loss, 3000 epochs, batch size of 16, and deterministic sample order (`shuffle = FALSE`).
+
+To improve reproducibility, we fixed a global seed (`SEED = 42`) and set deterministic TensorFlow options (`PYTHONHASHSEED`, `TF_DETERMINISTIC_OPS`, `TF_ENABLE_ONEDNN_OPTS`). Predictions were back-transformed to biomass units by exponentiating predicted log-biomass. Model skill is summarized with the coefficient of determination ($R^2$) computed between observed and predicted biomass on the original scale. For operational use, the fitted model is stored as an HDF5 file (`.h5`), and the associated scaling parameters are saved in a companion scaler file (`_scaler.rds`) and reused when the model is loaded.
+
+```{r NN}
+#| echo: false
+#| error: false
+#| message: false
+#| eval: true
+#| warning: false
+#| cache: true
+#| label: fig-nn-biomass
+#| fig-cap: "Relationship between observed harvested biomass and neural-network-predicted biomass derived from drone-based metrics. Each point represents a cultivation plot, with colours indicating percent cover (pc) estimated from aerial imagery. The dashed line represents the 1:1 relationship, and the panel annotation reports R²."
+
+library(ggplot2)
+library(ggiraph)
+library(dplyr)
+library(scales)
+library(readxl)
+library(tidyverse)
+library(sf)
+library(units)
+library(keras)
+library(reticulate)
+
+py_require("tensorflow")
+
+df <- read_xlsx("Data/Biomass_estimations/Harvested_measurment/NBS - Récolte 2025.xlsx") %>%
+  mutate(
+    Farm_chr = str_pad(as.character(FarmID),
+                       width = 3,
+                       side = "left",
+                       pad = "0"),
+    plot_id = paste0(Farm_chr, "_", ModuleNumber)
+  ) %>%
+  dplyr::filter(HarvestingDate >= as.Date("2025-12-01") & HarvestingDate <= as.Date("2025-12-05")) %>%
+  dplyr::select(plot_id, Biomass = Harvested_Weight)
+
+cadaster <- "Data/SHP/NBS_cadastre_Dec_2025.shp" %>%
+  read_sf() %>%
+  rename(plot_id = "ID") %>%
+  dplyr::select(plot_id)
+
+area_thresh <- set_units(0.1, m^2)
+
+shp <- read_sf("Data/Multivariate_Analysis/RF_Morphotypes_classification.shp") %>%
+  st_cast("POLYGON", warn = FALSE) %>%
+  # mutate(.area = st_area(geometry)) %>%
+  # filter(.area >= area_thresh) %>%
+  # select(-.area) %>% 
+  group_by(plot_id, rf_class) %>%
+  reframe(area_rf = sum(st_area(geometry)))
+
+prod_2025 <- read_xlsx("Data/Biomass_estimations/Harvested_measurment/NBS - Récolte 2025.xlsx") %>%
+  mutate(FarmID = sprintf("%03d", FarmID),
+         Module_ID = paste(FarmID, ModuleNumber, sep = "_")) %>%
+  mutate(Net_Production = Harvested_Weight - 700,
+         Growth_per_day = ((Net_Production / CultureDuration_days) / LinesCount)) %>%
+  dplyr::select(Module_ID, Growth_per_day) %>%
+  group_by(Module_ID) %>%
+  dplyr::reframe(
+    med = median(Growth_per_day, na.rm = TRUE),
+    sd = sd(Growth_per_day, na.rm = TRUE)
+  ) %>%
+  dplyr::rename(plot_id = "Module_ID")
+
+cadaster_filtered <- cadaster %>%
+  dplyr::filter(plot_id %in% unique(shp$plot_id)) %>%
+  mutate(area = (st_area(geometry))) %>%
+  st_drop_geometry()
+
+percent_cover <- shp %>%
+  left_join(cadaster_filtered, by = "plot_id") %>%
+  group_by(plot_id) %>%
+  reframe(area_rf = sum(area_rf),
+          area = unique(area)) %>%
+  mutate(area_rf = as.numeric(area_rf),
+         pc = as.numeric((area_rf / area) * 100)) %>%
+  left_join(df, by = "plot_id") %>%
+  dplyr::select(-area) %>%
+  dplyr::filter(Biomass > 1000) %>%
+  left_join(prod_2025, by = "plot_id")
+
+SEED <- 42
+set.seed(SEED)
+
+Sys.setenv(
+  PYTHONHASHSEED = as.character(SEED),
+  TF_DETERMINISTIC_OPS = "1",
+  TF_ENABLE_ONEDNN_OPTS = "0"
+)
+
+tensorflow::tf$random$set_seed(as.integer(SEED))
+
+df_all <- percent_cover %>%
+  transmute(
+    y = log(Biomass),
+    area_rf = area_rf,
+    pc = pc,
+    med = med,
+    sd = sd
+  ) %>%
+  filter(is.finite(y)) %>%
+  drop_na()
+
+X <- as.matrix(df_all[, c("area_rf", "pc", "med", "sd")])
+storage.mode(X) <- "double"
+y <- as.numeric(df_all$y)
+
+model_name <- "Data/Model/Biomass_NN_3000Epoch.h5"
+scaler_name <- gsub(".h5", "_scaler.rds", model_name)
+has_saved_model <- file.exists(model_name) && file.exists(scaler_name)
+
+if (has_saved_model) {
+  scaler <- readRDS(scaler_name)
+  mu <- scaler$mu
+  sig <- scaler$sig
+  model_final <- load_model_hdf5(model_name, compile = FALSE)
+} else {
+  mu <- colMeans(X)
+  sig <- apply(X, 2, sd)
+  sig[sig == 0] <- 1
+
+  keras::k_clear_session()
+  k_init <- initializer_glorot_uniform(seed = as.integer(SEED))
+
+  model_final <- keras_model_sequential()
+  model_final$add(layer_input(shape = ncol(X)))
+  model_final$add(layer_dense(units = 32, activation = "relu", kernel_initializer = k_init))
+  model_final$add(layer_dropout(rate = 0.2, seed = as.integer(SEED)))
+  model_final$add(layer_dense(units = 16, activation = "relu", kernel_initializer = k_init))
+  model_final$add(layer_dense(units = 1, kernel_initializer = k_init))
+
+  model_final$compile(
+    optimizer = optimizer_adam(learning_rate = 1e-3),
+    loss = "mse"
+  )
+}
+
+sig[sig == 0] <- 1
+X_scaled <- sweep(sweep(X, 2, mu, "-"), 2, sig, "/")
+np <- reticulate::import("numpy", convert = FALSE)
+X_np <- np$array(X_scaled, dtype = "float32")
+
+if (!has_saved_model) {
+  y_np <- np$array(y, dtype = "float32")
+  model_final$fit(
+    X_np, y_np,
+    epochs = as.integer(3000),
+    batch_size = as.integer(16),
+    shuffle = FALSE,
+    verbose = 0
+  )
+
+  save_model_hdf5(model_final, model_name)
+  saveRDS(list(mu = mu, sig = sig), scaler_name)
+}
+
+pred_log_all <- as.numeric(model_final$predict(X_np, verbose = 0))
+pred_bio_all <- exp(pred_log_all)
+obs_bio_all <- percent_cover$Biomass
+r2_all <- cor(obs_bio_all, pred_bio_all, use = "complete.obs")^2
+r2_label <- paste0("R² = ", sprintf("%.2f", r2_all))
+
+plot_df <- percent_cover %>%
+  mutate(
+    pred = pred_bio_all,
+    tooltip = paste0(
+      "plot_id: ", plot_id,
+      "\npc: ", round(pc, 1),
+      "\nmed prod: ", round(med, 3),
+      "\nsd prod: ", round(sd, 3),
+      "\nBiomass (obs): ", comma(Biomass),
+      "\nBiomass (pred): ", comma(pred)
+    ),
+    data_id = as.character(plot_id)
+  )
+
+p <- ggplot(plot_df, aes(Biomass, pred)) +
+  ggiraph::geom_point_interactive(
+    aes(colour = pc, tooltip = tooltip, data_id = data_id),
+    size = 2.5,
+    alpha = 0.85
+  ) +
+  geom_abline(slope = 1, intercept = 0, linetype = 2) +
+  scale_colour_viridis_c(name = "Plot\nCover\n(%)") +
+  coord_equal() +
+  annotate(
+    "label",
+    x = Inf, y = -Inf,
+    hjust = 1.1, vjust = -0.5,
+    label = r2_label,
+    fill = "white"
+  ) +
+  labs(
+    x = "Observed Biomass",
+    y = "Predicted Biomass (Neural Network)"
+  ) +
+  theme_minimal(base_size = 14)
+
+girafe(
+  ggobj = p,
+  options = list(
+    opts_hover(css = "stroke:black;stroke-width:1.5pt;r:5pt;"),
+    opts_tooltip(css = "background:white;color:black;padding:6px;border:1px solid #333;border-radius:4px;"),
+    opts_sizing(rescale = TRUE)
+  )
+)
+```
+
+### Results
+
+Figure @fig-nn-biomass shows that neural-network predictions follow the observed biomass gradient, with most plots distributed around the 1:1 reference line. The R² annotation indicates that the model captures a substantial fraction of biomass variability on the training dataset. Colour gradients suggest that higher percent cover is generally associated with higher observed and predicted biomass, while residual deviations around the 1:1 line indicate remaining plot-level heterogeneity not fully captured by the predictors.
+
+**This neural-network model will be implemented in Madakappy v1.1.**
+:::
+
+::: {#panel-gam .model-panel}
+## General Additive Model
+
+### Material and methods
+
+To estimate harvested biomass from drone-derived metrics, we developed a statistical model linking spatial observations to field measurements. Because the relationship between surface area and biomass is not strictly linear, we used a flexible modelling approach capable of capturing nonlinear patterns while remaining interpretable.
+
+Biomass values were first log-transformed to reduce skewness and stabilize variance, which is common when modelling biological quantities that span a wide range of values. The transformed response was then modelled using a Student-t distribution:
+
+$$
+y_i = \log(\mathrm{Biomass}_i)
+$$
+
+$$
+y_i \sim \mathrm{Student}\text{-}t(\nu, \mu_i, \sigma)
+$$
+
+Compared to a standard Gaussian model, the Student-t distribution is more robust to extreme values and allows the model to better accommodate occasional unusually high or low biomass observations. The expected log-biomass ($\mu_i$) was expressed as:
+
+$$
+\mu_i = \beta_0 + f(\mathrm{area\_rf}_i, \mathrm{pc}_i)
++ \beta_1 \mathrm{med}_i + \beta_2 \mathrm{sd}_i
+$$
+
+The function $f(\mathrm{area\_rf}_i, \mathrm{pc}_i)$ represents a smooth surface that describes how biomass varies with both the spatial extent of algae detected by the drone ($area\_rf$) and its percent cover ($pc$). This flexible component allows the model to capture effects such as saturation, where biomass continues to increase even when the visible surface area is already fully occupied.
+
+In addition to spatial metrics, we incorporated production-related variables derived from time-series monitoring of each cultivation module. The median daily production during 2025 ($med$) represents the overall productivity of a module, while the standard deviation of daily production ($sd$) reflects temporal variability. Including these descriptors allows the model to distinguish between plots that appear similar in drone imagery but differ in long-term productivity.
+
+The model was fitted within a Bayesian framework using Hamiltonian Monte Carlo sampling. This approach provides full predictive distributions rather than single-point estimates, allowing uncertainty in biomass predictions to be quantified. Predictions were converted back to the original biomass scale by exponentiating the model outputs. The model was implemented using the brms package in R, which interfaces with the Stan probabilistic programming language. Four independent Markov chains were run with a large number of iterations (80,000 per chain, including 20,000 warm-up iterations) to ensure stable posterior estimation. Convergence was assessed using the potential scale reduction factor (Rhat) and visual inspection of caterpillar plots. Weakly informative default priors were used to regularize parameter estimates while allowing the data to drive inference.
+
+```{r Multivariate with Area}
+#| echo: false
+#| error: false
+#| message: false
+#| eval: true
+#| warning: false
+#| cache: true
+#| fig-cap: "Relationship between observed harvested biomass and model-predicted biomass derived from drone-based metrics. Each point represents a cultivation plot, with colours indicating percent cover (pc) estimated from aerial imagery. Vertical bars show the 80% posterior credible interval of the predictions. The dashed line represents the 1:1 relationship."
+#| label: fig-map_productivity
+
+library(ggplot2)
+library(ggiraph)
+library(dplyr)
+library(scales)
+library(brms)
+library(matrixStats)
+library(readxl)
+library(tidyverse)
+library(sf)
+library(units)
+
+df <- read_xlsx("Data/Biomass_estimations/Harvested_measurment/NBS - Récolte 2025.xlsx") %>%
+  mutate(
+    Farm_chr = str_pad(as.character(FarmID),
+                       width = 3,
+                       side = "left",
+                       pad = "0"),
+    plot_id = paste0(Farm_chr, "_", ModuleNumber)
+  ) %>%
+  dplyr::filter(HarvestingDate >= as.Date("2025-12-01") & HarvestingDate <= as.Date("2025-12-05")) %>%
+  dplyr::select(plot_id, Biomass = Harvested_Weight)
+
+cadaster <- "Data/SHP/NBS_cadastre_Dec_2025.shp" %>%
+  read_sf() %>%
+  rename(plot_id = "ID") %>%
+  dplyr::select(plot_id)
+
+area_thresh <- set_units(0.1, m^2)
+
+shp <- read_sf("Data/Multivariate_Analysis/RF_Morphotypes_classification.shp") %>%
+  st_cast("POLYGON", warn = FALSE) %>%
+  mutate(.area = st_area(geometry)) %>%
+  filter(.area >= area_thresh) %>%
+  select(-.area) %>%
+  group_by(plot_id, rf_class) %>%
+  reframe(area_rf = sum(st_area(geometry)))
+
+prod_2025 <- read_xlsx("Data/Biomass_estimations/Harvested_measurment/NBS - Récolte 2025.xlsx") %>%
+  mutate(FarmID = sprintf("%03d", FarmID),
+         Module_ID = paste(FarmID, ModuleNumber, sep = "_")) %>%
+  mutate(Net_Production = Harvested_Weight - 700,
+         Growth_per_day = ((Net_Production / CultureDuration_days) / LinesCount)) %>%
+  dplyr::select(Module_ID, Growth_per_day) %>%
+  group_by(Module_ID) %>%
+  dplyr::reframe(
+    med = median(Growth_per_day, na.rm = TRUE),
+    sd = sd(Growth_per_day, na.rm = TRUE)
+  ) %>%
+  dplyr::rename(plot_id = "Module_ID")
+
+cadaster_filtered <- cadaster %>%
+  dplyr::filter(plot_id %in% unique(shp$plot_id)) %>%
+  mutate(area = (st_area(geometry))) %>%
+  st_drop_geometry()
+
+percent_cover <- shp %>%
+  left_join(cadaster_filtered, by = "plot_id") %>%
+  group_by(plot_id) %>%
+  reframe(area_rf = sum(area_rf),
+          area = unique(area)) %>%
+  mutate(area_rf = as.numeric(area_rf),
+         pc = as.numeric((area_rf / area) * 100)) %>%
+  left_join(df, by = "plot_id") %>%
+  dplyr::select(-area) %>%
+  dplyr::filter(Biomass > 1000) %>%
+  left_join(prod_2025, by = "plot_id") %>%
+  mutate(
+    med_z = scale(med)[, 1],
+    sd_z = scale(sd)[, 1]
+  )
+
+fit_gam <- brm(
+  bf(log(Biomass) ~
+       t2(area_rf, pc, k = c(10, 10)) +
+       med_z + sd_z),
+  data = percent_cover,
+  family = student(),
+  chains = 4, cores = 4, iter = 80000, warmup = 20000,
+  control = list(adapt_delta = 0.99),
+  seed = 42,
+  file = "Data/Model/GAM_STD_80000_withProduction_cleaned.rds"
+)
+
+ep_log <- posterior_epred(fit_gam, newdata = percent_cover)
+ep_biomass <- exp(ep_log)
+
+ep_biomass_mat <- ep_biomass
+if (length(dim(ep_biomass_mat)) != 2) {
+  ep_biomass_mat <- matrix(ep_biomass_mat, nrow = nrow(ep_log))
+}
+
+pred_q <- matrixStats::colQuantiles(ep_biomass_mat, probs = c(0.1, 0.9), na.rm = TRUE)
+
+pred_df <- percent_cover %>%
+  mutate(
+    biomass_pred = colMeans(ep_biomass_mat, na.rm = TRUE),
+    biomass_lo = pred_q[, 1],
+    biomass_hi = pred_q[, 2],
+    tooltip = paste0(
+      "plot_id: ", plot_id,
+      "\npc: ", round(pc, 1),
+      "\nmed prod: ", round(med, 3),
+      "\nsd prod: ", round(sd, 3),
+      "\nBiomass (obs): ", comma(Biomass),
+      "\nBiomass (pred): ", comma(biomass_pred)
+    ),
+    data_id = as.character(plot_id)
+  )
+
+r2_obs <- cor(pred_df$Biomass, pred_df$biomass_pred, use = "complete.obs")^2
+r2_label <- paste0("R² = ", sprintf("%.2f", r2_obs))
+
+p <- ggplot(pred_df, aes(x = Biomass, y = biomass_pred)) +
+  geom_errorbar(aes(ymin = biomass_lo, ymax = biomass_hi), width = 0, alpha = 0.25) +
+  ggiraph::geom_point_interactive(
+    aes(colour = pc, tooltip = tooltip, data_id = data_id),
+    size = 2.5, alpha = 0.85
+  ) +
+  geom_abline(slope = 1, intercept = 0, linetype = 2) +
+  scale_colour_viridis_c(name = "Plot\nCover\n(%)") +
+  labs(
+    x = "Observed Biomass",
+    y = "Predicted Biomass (posterior mean, 80% CI)"
+  ) +
+  coord_equal() +
+  theme_minimal() +
+  annotate(
+    "label",
+    x = Inf, y = -Inf,
+    hjust = 1.1, vjust = -0.5,
+    label = r2_label,
+    fill = "white"
+  )
+
+girafe(
+  ggobj = p,
+  options = list(
+    opts_hover(css = "stroke:black;stroke-width:1.5pt;r:5pt;"),
+    opts_tooltip(css = "background:white;color:black;padding:6px;border:1px solid #333;border-radius:4px;"),
+    opts_sizing(rescale = TRUE)
+  )
+)
+```
+
+### Results
+
+Figure @fig-map_productivity indicates a strong agreement between observed and GAM-predicted biomass, with most points concentrated near the 1:1 line. The reported R² confirms a high explanatory performance on the analysed dataset. Vertical 80% credible intervals are generally moderate but vary between plots, highlighting that uncertainty is plot-specific and tends to increase for some observations away from the central trend.
+:::
+
+

@@ -797,11 +797,10 @@ m <- leaflet(df_error) %>%
 
 m
 
-
-
 ```
 
 
 In summary, further improvement of the area–biomass relationship would require particular attention to several key aspects. First, enhancing the Random Forest classification performance, especially for discriminating Kappaphycus from other benthic vegetation, would reduce uncertainty in the area estimates. Second, extending the analysis beyond a univariate framework by incorporating additional explanatory variables in a multivariate approach could better capture external drivers of biomass variability.
 
 As an initial step, two readily available variables could be considered: farmer identity and a cultivation density index. For a given cultivated area, plots where algae are densely packed along the cultivation lines are expected to yield higher biomass than plots where lines remain clearly distinguishable, despite having similar surface coverage. Accounting for such differences would likely improve the robustness and predictive power of the relationship between cultivated area and harvested biomass.
+
